@@ -1,14 +1,14 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { FileText, Map, ChevronRight, User, ExternalLink, Activity, Key, Wrench, Radio, Signal, Table } from 'lucide-react';
+import { FileText, Map, ChevronRight, User, ExternalLink, Activity, Key, Wrench, Radio, Signal, Table, ThermometerSnowflake, Navigation } from 'lucide-react';
 
 const Home: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 font-sans pb-12 overflow-x-hidden">
       
       {/* Hero Banner - Compacted */}
-      <div className="relative w-full py-8 bg-gradient-to-b from-[#005d8f] to-[#004a73] border-b-4 border-orange-500 shadow-md">
+      <div className="relative w-full py-4 bg-gradient-to-b from-[#005d8f] to-[#004a73] border-b-4 border-orange-500 shadow-md">
         <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '24px 24px' }}></div>
         <div className="absolute bottom-0 left-0 w-full h-1 bg-white/10"></div>
         
@@ -36,8 +36,8 @@ const Home: React.FC = () => {
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-4 mt-6 relative z-10">
-        <div className="bg-white rounded-lg shadow-lg border border-slate-200 p-6 md:p-8">
+      <div className="max-w-5xl mx-auto px-0 mt-6 relative z-10">
+        <div className="bg-white rounded-lg shadow-lg border border-slate-200 p-4 md:p-8">
             
             {/* Signal Section */}
             <div className="mb-10 animate-enter delay-100">
@@ -74,11 +74,16 @@ const Home: React.FC = () => {
                                 sheetHref="/view-data/relay"
                             />
                              <LinkCard 
-                                title="Daily movement CSI & SI Form"
-                                href="#"
-                                icon={<FileText className="w-4 h-4 text-slate-400" />}
-                                isExternal
-                                sheetHref="#"
+                                title="Daily movement SI/CSI Form"
+                                href="/report-movement"
+                                icon={<Navigation className="w-4 h-4 text-indigo-600" />}
+                                sheetHref="/view-data/movement"
+                            />
+                             <LinkCard 
+                                title="Daily Disconnection Position"
+                                href="/report-disconnection"
+                                icon={<Activity className="w-4 h-4 text-orange-600" />}
+                                sheetHref="/view-data/disconnection"
                             />
                         </div>
                     </div>
@@ -91,17 +96,16 @@ const Home: React.FC = () => {
                         </div>
                         <div className="space-y-2">
                              <LinkCard 
-                                title="Weekly Position of Fire Alarm Form"
+                                title="Weekly Fire Alarm Position Form"
                                 href="/report-failure"
                                 icon={<Activity className="w-4 h-4 text-red-600" />}
                                 sheetHref="/view-data/failure"
                             />
                              <LinkCard 
                                 title="Weekly AC Unit Position Form"
-                                href="#"
-                                icon={<FileText className="w-4 h-4 text-slate-400" />}
-                                isExternal
-                                sheetHref="#"
+                                href="/report-ac"
+                                icon={<ThermometerSnowflake className="w-4 h-4 text-cyan-600" />}
+                                sheetHref="/view-data/ac"
                             />
                              <LinkCard 
                                 title="Weekly IPS Position Form"
@@ -111,10 +115,9 @@ const Home: React.FC = () => {
                             />
                              <LinkCard 
                                 title="JPC Done (ADI Div) Form"
-                                href="#"
+                                href="/report-jpc"
                                 icon={<FileText className="w-4 h-4 text-slate-400" />}
-                                isExternal
-                                sheetHref="#"
+                                sheetHref="/view-data/jpc"
                             />
                         </div>
                     </div>

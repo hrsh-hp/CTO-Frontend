@@ -13,8 +13,31 @@ interface IPSFormProps {
 const inputClass = "w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:border-[#005d8f] focus:ring-4 focus:ring-[#005d8f]/10 outline-none text-slate-700 placeholder:text-slate-400 text-sm transition-all duration-200";
 const labelClass = "block text-[11px] font-semibold text-slate-500 mb-1.5 uppercase tracking-wider";
 
+// Helper to get CSRF token from Django cookies
+const getCookie = (name: string) => {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+};
+
 const IPSModuleForm: React.FC<IPSFormProps> = ({ onSubmit }) => {
-  const { officerHierarchy, flatOfficers, ipsModules, ipsCompanies } = useMasterData();
+  // Use Context for dynamic data (populated from API or Constants)
+  const { 
+    officerHierarchy, 
+    flatOfficers, 
+    ipsModules, 
+    ipsCompanies 
+  } = useMasterData();
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Header State
@@ -22,7 +45,7 @@ const IPSModuleForm: React.FC<IPSFormProps> = ({ onSubmit }) => {
   const [weekFrom, setWeekFrom] = useState('');
   const [weekTo, setWeekTo] = useState('');
   
-  // Filtering
+  // Filtering & Location
   const [sectionalOfficerFilter, setSectionalOfficerFilter] = useState('');
   const [csi, setCsi] = useState('');
   const [remarks, setRemarks] = useState('');
@@ -40,6 +63,7 @@ const IPSModuleForm: React.FC<IPSFormProps> = ({ onSubmit }) => {
     defAMC: ''
   });
 
+  // Auto-calculate Week range when Submission Date (Monday) changes
   useEffect(() => {
     if (submissionDate) {
       const date = new Date(submissionDate);
@@ -55,7 +79,7 @@ const IPSModuleForm: React.FC<IPSFormProps> = ({ onSubmit }) => {
     }
   }, [submissionDate]);
 
-  // Dynamic CSI List
+  // Dynamic CSI List based on hierarchy
   const availableCSIs = useMemo(() => {
     if (!sectionalOfficerFilter) return [];
     const officerNode = officerHierarchy.find(o => o.name === sectionalOfficerFilter);
@@ -83,6 +107,7 @@ const IPSModuleForm: React.FC<IPSFormProps> = ({ onSubmit }) => {
   const handleAddEntry = () => {
     if (!currentModule || !currentCompany) return;
     
+    // Check if entry exists to update instead of add
     const existingIndex = entries.findIndex(e => e.moduleType === currentModule && e.company === currentCompany);
     
     const qtyDef = parseInt(currentCounts.def || '0');
@@ -146,7 +171,7 @@ const IPSModuleForm: React.FC<IPSFormProps> = ({ onSubmit }) => {
       }), { def: 0, spare: 0, spareAMC: 0, defAMC: 0 });
   };
 
-  // Grand Totals
+  // Grand Totals (Bottom Right)
   const grandTotal = entries.reduce((acc, curr) => ({
       def: acc.def + curr.qtyDefective,
       spare: acc.spare + curr.qtySpare,
@@ -155,7 +180,7 @@ const IPSModuleForm: React.FC<IPSFormProps> = ({ onSubmit }) => {
   }), { def: 0, spare: 0, spareAMC: 0, defAMC: 0 });
 
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!submissionDate || !csi) {
       alert("Please fill in all required header fields.");
@@ -163,19 +188,63 @@ const IPSModuleForm: React.FC<IPSFormProps> = ({ onSubmit }) => {
     }
 
     setIsSubmitting(true);
-    
+
+    // 1. Prepare data for internal React state (camelCase)
+    const reportDataForApp = {
+        submissionDate,
+        weekFrom,
+        weekTo,
+        csi,
+        remarks,
+        entries
+    };
+
+    // 2. Prepare payload for Backend API (snake_case)
+    const apiPayload = {
+      submission_date: submissionDate,
+      week_from: weekFrom,
+      week_to: weekTo,
+      csi: csi, // Backend expects Name (SlugRelatedField)
+      remarks: remarks,
+      entries: entries.map(entry => ({
+        module_type: entry.moduleType,
+        company: entry.company,
+        qty_defective: entry.qtyDefective,
+        qty_spare: entry.qtySpare,
+        qty_spare_amc: entry.qtySpareAMC,
+        qty_defective_amc: entry.qtyDefectiveAMC
+      }))
+    };
+
+    try {
+      const csrftoken = getCookie('csrftoken');
+      
+      // 3. Attempt to POST to the Python Backend
+      const response = await fetch('/api/forms/ips-reports/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken || '',
+        },
+        credentials: 'include', // Important to send cookies/session
+        body: JSON.stringify(apiPayload),
+      });
+
+      if (response.ok) {
+        console.log("✅ Report successfully saved to Database via API.");
+      } else {
+        const errText = await response.text();
+        console.warn(`⚠️ API Submission failed (${response.status}). Falling back to local state.`, errText);
+      }
+    } catch (error) {
+      console.error("❌ Network error while submitting to API:", error);
+    }
+
+    // 4. Always update local UI (Optimistic update or offline fallback)
     setTimeout(() => {
-        const reportData = {
-            submissionDate,
-            weekFrom,
-            weekTo,
-            csi,
-            remarks,
-            entries
-        };
-        onSubmit(reportData);
+        onSubmit(reportDataForApp);
         setIsSubmitting(false);
-    }, 1000);
+    }, 500);
   };
 
   return (
@@ -206,6 +275,7 @@ const IPSModuleForm: React.FC<IPSFormProps> = ({ onSubmit }) => {
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-8 relative z-10">
+          {/* Section 1: Reporting Period */}
           <div className="border border-slate-100 rounded-lg p-6 bg-slate-50/50 hover:bg-slate-50 transition-colors">
             <h3 className="text-xs font-bold text-[#005d8f] border-b border-slate-200 pb-2 mb-6 uppercase tracking-wide flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-[#005d8f]"></span>
@@ -270,6 +340,7 @@ const IPSModuleForm: React.FC<IPSFormProps> = ({ onSubmit }) => {
             </div>
           </div>
 
+          {/* Section 2: Data Entry & Preview */}
           <div className="border border-slate-100 rounded-lg p-6 bg-slate-50/50 hover:bg-slate-50 transition-colors">
             <h3 className="text-xs font-bold text-purple-600 border-b border-slate-200 pb-2 mb-6 uppercase tracking-wide flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-purple-600"></span>
@@ -398,6 +469,11 @@ const IPSModuleForm: React.FC<IPSFormProps> = ({ onSubmit }) => {
                         </tfoot>
                     </table>
                 </div>
+            </div>
+            
+            <div className="mt-4 flex items-center gap-2 text-xs text-slate-500 bg-slate-100 p-2 rounded">
+                <AlertCircle className="w-4 h-4 text-slate-400" />
+                <p>This table previews the report. <strong>0</strong> is recorded for any empty cell.</p>
             </div>
           </div>
 

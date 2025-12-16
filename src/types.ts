@@ -7,9 +7,14 @@ export interface StationNode {
   name: string;
 }
 
+export interface SINode {
+  name: string; // e.g., "SI ADI", "SI VTA"
+  stations: string[]; // Station Codes
+}
+
 export interface CSINode {
   name: string;
-  stations: string[]; // Station Codes
+  sis: SINode[]; // Changed from direct stations to SIs
 }
 
 export interface OfficerNode {
@@ -71,20 +76,67 @@ export interface RelayRoomLog {
 export interface MaintenanceReport {
   id: string;
   type: 'maintenance';
-  // Personal Details
-  name: string;
-  designation: string;
-  stationPosted: string;
+  date: string;
   sectionalOfficer: string;
   csi: string;
-  date: string;
-
-  // Work Details
-  stationMaintained: string;
   maintenanceType: string;
-  workDescription: string;
+  
+  assetNumbers: string; // Point Nos, Signal Nos, Gate Nos
+  section: string;
+  workDescription: string; // What was done
+  remarks: string;
+  submittedAt: string;
+}
+
+export interface ACFailureReport {
+  id: string;
+  type: 'ac';
+  name: string;
+  designation: string;
+  sectionalOfficer: string;
+  csi: string;
+  
+  // AC Details
+  date: string; // Reporting Date
+  locationCode: string; // Station/Location faulty at
+  totalACUnits: number;
+  acType: 'Split' | 'Window';
+  totalFailCount: string; // 1, 2, ... All
+  failureDateTime: string;
+  underWarranty: 'Yes' | 'No';
+  underAMC: 'Yes' | 'No';
   remarks: string;
 
+  submittedAt: string;
+}
+
+export interface MovementReport {
+  id: string;
+  type: 'movement';
+  date: string;
+  name: string;
+  designation: string; // Combined e.g. "JE/VTA"
+  sectionalOfficer: string;
+  csi: string;
+  
+  moveFrom: string;
+  moveTo: string;
+  workDone: string;
+  
+  submittedAt: string;
+}
+
+export interface JPCReport {
+  id: string;
+  type: 'jpc';
+  station: string;
+  totalPoints: number;
+  inspectedToday: number;
+  jpcDate: string; // JPC Done on
+  totalInspectedCum: number; // Cumulated
+  pendingPoints: number;
+  inspectionBy: 'SI' | 'CSI';
+  inspectorName: string;
   submittedAt: string;
 }
 
@@ -114,7 +166,34 @@ export interface IPSReport {
   submittedAt: string;
 }
 
-export type AnyReport = FailureReport | RelayRoomLog | MaintenanceReport | IPSReport;
+// --- Disconnection Report Interfaces ---
+
+export interface DisconnectionCounts {
+  d: number; // Disconnection / Duration?
+  a: number; // Allowed / Authority?
+  n: number; // Not Allowed / Nil?
+}
+
+export interface DisconnectionEntry {
+  id: string;
+  siName: string; // The row identifier
+  catA: DisconnectionCounts; // Replacement of Gear
+  catB: DisconnectionCounts; // Engg Work
+  catC: DisconnectionCounts; // Maintenance
+  catD: DisconnectionCounts; // Failure
+}
+
+export interface DisconnectionReport {
+  id: string;
+  type: 'disconnection';
+  date: string;
+  sectionalOfficer: string;
+  csi: string;
+  entries: DisconnectionEntry[];
+  submittedAt: string;
+}
+
+export type AnyReport = FailureReport | RelayRoomLog | MaintenanceReport | IPSReport | ACFailureReport | DisconnectionReport | MovementReport | JPCReport;
 
 export interface FilterState {
   sectionalOfficer: string;

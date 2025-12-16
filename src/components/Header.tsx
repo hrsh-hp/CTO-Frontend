@@ -17,8 +17,8 @@ const Header: React.FC = () => {
 
   const navLinks = [
     { name: 'Office of Sr. DSTE', path: '/' },
-    { name: 'Sectional Officers', path: '/sectional-officers' },
     { name: 'Dashboard', path: '/admin' }, 
+    { name: 'Sectional Officers', path: '/sectional-officers' },
     { name: 'Policy Letters & Drawings', path: '/policies' },
   ];
 

@@ -1,5 +1,5 @@
 
-  import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
   import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
   import Header from './components/Header';
   import Home from './components/Home';
@@ -8,59 +8,135 @@
   import InspectionForm from './components/InspectionForm'; 
   import MaintenanceForm from './components/MaintenanceForm';
   import IPSModuleForm from './components/IPSModuleForm';
+  import ACReportForm from './components/ACReportForm';
+  import DisconnectionForm from './components/DisconnectionForm';
+  import MovementForm from './components/MovementForm';
+  import JPCForm from './components/JPCForm'; // New Import
   import Dashboard from './components/Dashboard';
   import SectionalOfficers from './components/SectionalOfficers';
   import PolicyLetters from './components/PolicyLetters';
   import DataSheetView from './components/DataSheetView';
-  import type { FailureReport, RelayRoomLog, MaintenanceReport, IPSReport } from './types';
-  import { MOCK_FAILURES, MOCK_RELAY_LOGS, MOCK_MAINTENANCE_LOGS, MOCK_IPS_REPORTS } from './constants';
+  import type { FailureReport, RelayRoomLog, MaintenanceReport, IPSReport, ACFailureReport, DisconnectionReport, MovementReport, JPCReport } from './types';
+  import { MOCK_FAILURES, MOCK_RELAY_LOGS, MOCK_MAINTENANCE_LOGS, MOCK_IPS_REPORTS, MOCK_AC_REPORTS } from './constants';
   import { CheckCircle, AlertOctagon, Copy } from 'lucide-react';
   import { MasterDataProvider } from './contexts/MasterDataContext';
 
-  const MainLayout = () => {
-    // --- State for Failure Reports ---
-    const [failures, setFailures] = useState<FailureReport[]>(() => {
-      const saved = localStorage.getItem('firewatch_failures');
-      return saved ? JSON.parse(saved) : MOCK_FAILURES;
-    });
+  // Helper to get CSRF token
+  const getCookie = (name: string) => {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  };
 
-    // --- State for Relay Room Logs ---
+  const MainLayout = () => {
+    // --- State for Reports ---
+    const [failures, setFailures] = useState<FailureReport[]>([]);
     const [relayLogs, setRelayLogs] = useState<RelayRoomLog[]>(() => {
       const saved = localStorage.getItem('firewatch_relay_logs');
       return saved ? JSON.parse(saved) : MOCK_RELAY_LOGS;
     });
-
-    // --- State for Maintenance Logs ---
     const [maintenanceLogs, setMaintenanceLogs] = useState<MaintenanceReport[]>(() => {
       const saved = localStorage.getItem('firewatch_maintenance_logs');
       return saved ? JSON.parse(saved) : MOCK_MAINTENANCE_LOGS;
     });
-
-    // --- State for IPS Reports ---
-    const [ipsReports, setIpsReports] = useState<IPSReport[]>(() => {
-      const saved = localStorage.getItem('firewatch_ips_reports');
-      return saved ? JSON.parse(saved) : MOCK_IPS_REPORTS;
+    const [ipsReports, setIpsReports] = useState<IPSReport[]>([]);
+    const [acReports, setACReports] = useState<ACFailureReport[]>(() => {
+        const saved = localStorage.getItem('firewatch_ac_reports');
+        return saved ? JSON.parse(saved) : MOCK_AC_REPORTS;
     });
+    const [disconnectionReports, setDisconnectionReports] = useState<DisconnectionReport[]>([]);
+    const [movementReports, setMovementReports] = useState<MovementReport[]>([]);
+    const [jpcReports, setJpcReports] = useState<JPCReport[]>([]);
 
-    // --- Auth State ---
     const [isAuthenticated, setIsAuthenticated] = useState(false);
 
     // --- Persistence ---
-    useEffect(() => {
-      localStorage.setItem('firewatch_failures', JSON.stringify(failures));
-    }, [failures]);
+    useEffect(() => { localStorage.setItem('firewatch_relay_logs', JSON.stringify(relayLogs)); }, [relayLogs]);
+    useEffect(() => { localStorage.setItem('firewatch_maintenance_logs', JSON.stringify(maintenanceLogs)); }, [maintenanceLogs]);
+    useEffect(() => { localStorage.setItem('firewatch_ac_reports', JSON.stringify(acReports)); }, [acReports]);
 
+    // --- API Fetching ---
     useEffect(() => {
-      localStorage.setItem('firewatch_relay_logs', JSON.stringify(relayLogs));
-    }, [relayLogs]);
+      // 1. Failures
+      const fetchFailures = async () => {
+        try {
+          const response = await fetch('/api/forms/failure-reports/');
+          if (response.ok) {
+            const apiData = await response.json();
+            setFailures(apiData.map((r: any) => ({
+              id: r.id.toString(), type: 'failure', name: r.name, date: r.date, sectionalOfficer: r.sectional_officer, csi: r.csi, designation: r.designation, postingStationCode: r.posting_station_code, toLocation: r.to_location, route: r.route, make: r.make, failureDateTime: r.failure_date_time, reason: Array.isArray(r.reason) ? r.reason : [], remarks: r.remarks, amc: r.amc, warranty: r.warranty, status: r.status || 'Open', submittedAt: r.submitted_at
+            })));
+          } else {
+            const saved = localStorage.getItem('firewatch_failures');
+            setFailures(saved ? JSON.parse(saved) : MOCK_FAILURES);
+          }
+        } catch (error) {
+          const saved = localStorage.getItem('firewatch_failures');
+          setFailures(saved ? JSON.parse(saved) : MOCK_FAILURES);
+        }
+      };
+      
+      // 2. IPS
+      const fetchIPSReports = async () => {
+        try {
+          const response = await fetch('/api/forms/ips-reports/');
+          if (response.ok) {
+            const apiData = await response.json();
+            setIpsReports(apiData.map((r: any) => ({
+              id: r.id.toString(), type: 'ips', submissionDate: r.submission_date, weekFrom: r.week_from, weekTo: r.week_to, csi: r.csi, remarks: r.remarks, submittedAt: r.submitted_at, entries: r.entries.map((e: any) => ({ id: e.id.toString(), moduleType: e.module_type, company: e.company, qtyDefective: e.qty_defective, qtySpare: e.qty_spare, qtySpareAMC: e.qty_spare_amc, qtyDefectiveAMC: e.qty_defective_amc }))
+            })));
+          } else {
+            const saved = localStorage.getItem('firewatch_ips_reports');
+            if (saved) setIpsReports(JSON.parse(saved));
+            else setIpsReports(MOCK_IPS_REPORTS);
+          }
+        } catch (error) {
+          const saved = localStorage.getItem('firewatch_ips_reports');
+          if (saved) setIpsReports(JSON.parse(saved));
+          else setIpsReports(MOCK_IPS_REPORTS);
+        }
+      };
 
-    useEffect(() => {
-      localStorage.setItem('firewatch_maintenance_logs', JSON.stringify(maintenanceLogs));
-    }, [maintenanceLogs]);
+      // 3. Movements
+      const fetchMovements = async () => {
+          try {
+              const response = await fetch('/api/forms/movement-reports/');
+              if (response.ok) {
+                  const apiData = await response.json();
+                  setMovementReports(apiData.map((r: any) => ({
+                      id: r.id.toString(), type: 'movement', date: r.date, name: r.name, designation: r.designation, sectionalOfficer: r.sectional_officer, csi: r.csi, moveFrom: r.move_from, moveTo: r.move_to, workDone: r.work_done, submittedAt: r.submitted_at
+                  })));
+              }
+          } catch (error) { console.warn("Failed to fetch movements", error); }
+      };
 
-    useEffect(() => {
-      localStorage.setItem('firewatch_ips_reports', JSON.stringify(ipsReports));
-    }, [ipsReports]);
+      // 4. JPC
+      const fetchJPC = async () => {
+          try {
+              const response = await fetch('/api/forms/jpc-reports/');
+              if (response.ok) {
+                  const apiData = await response.json();
+                  setJpcReports(apiData.map((r: any) => ({
+                      id: r.id.toString(), type: 'jpc', station: r.station, totalPoints: r.total_points, inspectedToday: r.inspected_today, jpcDate: r.jpc_date, totalInspectedCum: r.total_inspected_cum, pendingPoints: r.pending_points, inspectionBy: r.inspection_by, inspectorName: r.inspector_name, submittedAt: r.submitted_at
+                  })));
+              }
+          } catch (error) { console.warn("Failed to fetch JPC reports", error); }
+      };
+
+      fetchFailures();
+      fetchIPSReports();
+      fetchMovements();
+      fetchJPC();
+    }, []);
 
     const navigate = useNavigate();
     
@@ -75,106 +151,81 @@
 
     // --- Handlers ---
     const handleFailureSubmit = (data: Omit<FailureReport, 'id' | 'status' | 'submittedAt' | 'type'>) => {
-      const newReport: FailureReport = {
-        ...data,
-        id: Math.floor(1000 + Math.random() * 9000).toString(),
-        type: 'failure',
-        status: 'Open',
-        submittedAt: new Date().toISOString()
-      };
+      const newReport: FailureReport = { ...data, id: Math.floor(1000 + Math.random() * 9000).toString(), type: 'failure', status: 'Open', submittedAt: new Date().toISOString() };
       setFailures(prev => [newReport, ...prev]);
-      triggerSuccess({
-          title: "Success",
-          message: "Failure report submitted successfully."
-      });
+      triggerSuccess({ title: "Success", message: "Failure report submitted successfully." });
     };
 
     const handleMaintenanceSubmit = (data: Omit<MaintenanceReport, 'id' | 'submittedAt' | 'type'>) => {
-      const newReport: MaintenanceReport = {
-        ...data,
-        id: Math.floor(7000 + Math.random() * 3000).toString(),
-        type: 'maintenance',
-        submittedAt: new Date().toISOString()
-      };
+      const newReport: MaintenanceReport = { ...data, id: Math.floor(7000 + Math.random() * 3000).toString(), type: 'maintenance', submittedAt: new Date().toISOString() };
       setMaintenanceLogs(prev => [newReport, ...prev]);
-      triggerSuccess({
-          title: "Log Recorded",
-          message: "Maintenance work has been successfully logged."
-      });
+      triggerSuccess({ title: "Log Recorded", message: "Maintenance work has been successfully logged." });
     };
 
     const handleIPSSubmit = (data: Omit<IPSReport, 'id' | 'submittedAt' | 'type'>) => {
-      const newReport: IPSReport = {
-        ...data,
-        id: Math.floor(8000 + Math.random() * 2000).toString(),
-        type: 'ips',
-        submittedAt: new Date().toISOString()
-      };
+      const newReport: IPSReport = { ...data, id: 'temp-' + Math.random().toString(36).substr(2, 9), type: 'ips', submittedAt: new Date().toISOString() };
       setIpsReports(prev => [newReport, ...prev]);
-      triggerSuccess({
-          title: "Report Submitted",
-          message: "Weekly IPS module position has been successfully recorded."
-      });
+      triggerSuccess({ title: "Report Submitted", message: "Weekly IPS module position has been successfully recorded." });
     };
 
-    const handleRelaySubmit = (data: Omit<RelayRoomLog, 'id' | 'submittedAt' | 'type' | 'snOpening' | 'snClosing'>) => {
-        // Logic to generate unique numbers between 1 and 150
-        const dateLogs = relayLogs.filter(log => log.date === data.date);
-        const usedSNs = new Set(dateLogs.flatMap(log => [log.snOpening, log.snClosing]));
+    const handleACSubmit = (data: Omit<ACFailureReport, 'id' | 'submittedAt' | 'type'>) => {
+        const newReport: ACFailureReport = { ...data, id: 'ac-' + Math.floor(9000 + Math.random() * 1000).toString(), type: 'ac', submittedAt: new Date().toISOString() };
+        setACReports(prev => [newReport, ...prev]);
+        triggerSuccess({ title: "Report Submitted", message: "AC Unit Position has been successfully logged." });
+    };
 
-        const generateUniqueSN = (): string => {
-            let sn;
-            let attempts = 0;
-            do {
-                // Generate number between 1 and 150
-                sn = Math.floor(Math.random() * 150 + 1).toString(); 
-                attempts++;
-                if (attempts > 500) break; // Safety break
-            } while (usedSNs.has(sn));
-            
-            usedSNs.add(sn); 
-            return sn;
+    const handleDisconnectionSubmit = (data: Omit<DisconnectionReport, 'id' | 'submittedAt' | 'type'>) => {
+        const newReport: DisconnectionReport = { ...data, id: 'dc-' + Math.floor(9000 + Math.random() * 1000).toString(), type: 'disconnection', submittedAt: new Date().toISOString() };
+        setDisconnectionReports(prev => [newReport, ...prev]);
+        triggerSuccess({ title: "Report Submitted", message: "Daily Disconnection Position has been successfully logged." });
+    };
+
+    const handleMovementSubmit = async (data: Omit<MovementReport, 'id' | 'submittedAt' | 'type'>) => {
+        const apiPayload = { date: data.date, name: data.name, designation: data.designation, sectional_officer: data.sectionalOfficer, csi: data.csi, move_from: data.moveFrom, move_to: data.moveTo, work_done: data.workDone };
+        try {
+            const csrftoken = getCookie('csrftoken');
+            await fetch('/api/forms/movement-reports/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken || '' }, credentials: 'include', body: JSON.stringify(apiPayload) });
+        } catch (err) { console.error("Network Error:", err); }
+        const newReport: MovementReport = { ...data, id: 'mv-' + Math.floor(9000 + Math.random() * 1000).toString(), type: 'movement', submittedAt: new Date().toISOString() };
+        setMovementReports(prev => [newReport, ...prev]);
+        triggerSuccess({ title: "Report Submitted", message: "Daily Movement Report has been successfully logged." });
+    };
+
+    const handleJPCSubmit = async (data: Omit<JPCReport, 'id' | 'submittedAt' | 'type'>) => {
+        const apiPayload = { 
+            station: data.station, 
+            total_points: data.totalPoints, 
+            inspected_today: data.inspectedToday, 
+            jpc_date: data.jpcDate, 
+            total_inspected_cum: data.totalInspectedCum, 
+            pending_points: data.pendingPoints, 
+            inspection_by: data.inspectionBy, 
+            inspector_name: data.inspectorName 
         };
-
-        const snOpen = generateUniqueSN();
-        const snClose = generateUniqueSN();
-
-        const newReport: RelayRoomLog = {
-            ...data,
-            id: Math.floor(5000 + Math.random() * 4000).toString(),
-            type: 'relayRoom',
-            snOpening: snOpen,
-            snClosing: snClose,
-            submittedAt: new Date().toISOString()
-        };
-        setRelayLogs(prev => [newReport, ...prev]);
+        try {
+            const csrftoken = getCookie('csrftoken');
+            await fetch('/api/forms/jpc-reports/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken || '' }, credentials: 'include', body: JSON.stringify(apiPayload) });
+        } catch (err) { console.error("Network Error:", err); }
         
-        triggerSuccess({
-            title: "Log Recorded",
-            message: "Relay room entry has been successfully logged.",
-            codes: [
-                { label: "Opening Serial No.", value: snOpen },
-                { label: "Closing Serial No.", value: snClose }
-            ],
-            warning: "STRICT WARNING: Please record these serial numbers in the physical register immediately. Accuracy is mandatory."
-        });
+        const newReport: JPCReport = { ...data, id: 'jpc-' + Math.floor(9000 + Math.random() * 1000).toString(), type: 'jpc', submittedAt: new Date().toISOString() };
+        setJpcReports(prev => [newReport, ...prev]);
+        triggerSuccess({ title: "Report Submitted", message: "JPC Report has been successfully logged." });
+    };
+
+    const handleRelaySubmit = (data: Omit<RelayRoomLog, 'id' | 'submittedAt' | 'type'>) => {
+        const newReport: RelayRoomLog = { ...data, id: Math.floor(5000 + Math.random() * 4000).toString(), type: 'relayRoom', submittedAt: new Date().toISOString() };
+        setRelayLogs(prev => [newReport, ...prev]);
+        triggerSuccess({ title: "Log Recorded", message: "Relay room entry has been successfully logged.", warning: "Ensure these details match the physical register." });
     };
 
     const triggerSuccess = (data: typeof successData) => {
         setSuccessData(data);
         setShowSuccess(true);
-        
-        // Only auto-dismiss if there are no codes to show (simple success)
-        if (!data?.codes) {
-            setTimeout(() => {
-                handleDismiss();
-            }, 2000);
-        }
+        if (!data?.codes) { setTimeout(() => { handleDismiss(); }, 2000); }
     };
 
     const handleDismiss = () => {
         setShowSuccess(false);
-        // Navigate back to sectional positions list instead of admin dashboard for non-admin users
         navigate('/'); 
     };
 
@@ -192,15 +243,31 @@
             <Route path="/report-inspection" element={<InspectionForm onSubmit={handleRelaySubmit} />} />
             <Route path="/report-maintenance" element={<MaintenanceForm onSubmit={handleMaintenanceSubmit} />} />
             <Route path="/report-ips" element={<IPSModuleForm onSubmit={handleIPSSubmit} />} />
+            <Route path="/report-ac" element={<ACReportForm onSubmit={handleACSubmit} />} />
+            <Route path="/report-disconnection" element={<DisconnectionForm onSubmit={handleDisconnectionSubmit} />} />
+            <Route path="/report-movement" element={<MovementForm onSubmit={handleMovementSubmit} />} />
+            <Route path="/report-jpc" element={<JPCForm onSubmit={handleJPCSubmit} />} />
             
             <Route path="/view-data/failure" element={<DataSheetView data={failures} type="failure" />} />
             <Route path="/view-data/relay" element={<DataSheetView data={relayLogs} type="relay" />} />
             <Route path="/view-data/maintenance" element={<DataSheetView data={maintenanceLogs} type="maintenance" />} />
             <Route path="/view-data/ips" element={<DataSheetView data={ipsReports} type="ips" />} />
+            <Route path="/view-data/ac" element={<DataSheetView data={acReports} type="ac" />} />
+            <Route path="/view-data/disconnection" element={<DataSheetView data={disconnectionReports} type="disconnection" />} />
+            <Route path="/view-data/movement" element={<DataSheetView data={movementReports} type="movement" />} />
+            <Route path="/view-data/jpc" element={<DataSheetView data={jpcReports} type="jpc" />} />
 
             <Route path="/admin" element={
               isAuthenticated ? (
-                <Dashboard failures={failures} relayLogs={relayLogs} maintenanceLogs={maintenanceLogs} ipsReports={ipsReports} />
+                <Dashboard 
+                    failures={failures} 
+                    relayLogs={relayLogs} 
+                    maintenanceLogs={maintenanceLogs} 
+                    ipsReports={ipsReports}
+                    acReports={acReports}
+                    movementReports={movementReports}
+                    jpcReports={jpcReports}
+                />
               ) : (
                 <Login onLogin={() => setIsAuthenticated(true)} />
               )
@@ -223,19 +290,19 @@
                     <p className="text-slate-500 mt-2">{successData.message}</p>
                 </div>
 
-                {successData.codes && (
-                    <div className="w-full p-6 bg-white space-y-6">
-                          {successData.warning && (
-                              <div className="bg-red-50 border-l-4 border-red-500 p-4 text-left rounded-r-md">
-                                  <div className="flex items-start gap-3">
-                                      <AlertOctagon className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                                      <p className="text-sm text-red-800 font-semibold leading-relaxed">
-                                          {successData.warning}
-                                      </p>
-                                  </div>
+                <div className="w-full p-6 bg-white space-y-6">
+                      {successData.warning && (
+                          <div className="bg-red-50 border-l-4 border-red-500 p-4 text-left rounded-r-md">
+                              <div className="flex items-start gap-3">
+                                  <AlertOctagon className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                                  <p className="text-sm text-red-800 font-semibold leading-relaxed">
+                                      {successData.warning}
+                                  </p>
                               </div>
-                          )}
+                          </div>
+                      )}
 
+                    {successData.codes && (
                         <div className="grid grid-cols-2 gap-4">
                             {successData.codes.map((code, idx) => (
                                 <div key={idx} className="bg-slate-100 p-4 rounded-xl border border-slate-200 flex flex-col items-center">
@@ -244,8 +311,8 @@
                                 </div>
                             ))}
                         </div>
-                    </div>
-                )}
+                    )}
+                </div>
 
                 <div className="w-full p-4 bg-slate-50 border-t border-slate-100">
                       {successData.codes ? (

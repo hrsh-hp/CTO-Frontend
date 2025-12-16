@@ -1,13 +1,13 @@
 
 import React, { useMemo, useState } from 'react';
 import { INITIAL_FILTERS } from '../types';
-import type { FailureReport, RelayRoomLog, MaintenanceReport, IPSReport, FilterState } from '../types';
+import type { FailureReport, RelayRoomLog, MaintenanceReport, IPSReport, ACFailureReport, MovementReport, JPCReport, FilterState } from '../types';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from 'recharts';
 import { 
   Filter, FileText, AlertTriangle, CheckCircle, MapPin, 
-  RefreshCw, Key, Clock, AlertCircle, Wrench, ClipboardList, Download, Zap
+  RefreshCw, Key, Clock, AlertCircle, Wrench, ClipboardList, Download, Zap, ThermometerSnowflake, Navigation, FileCheck, Activity
 } from 'lucide-react';
 import { useMasterData } from '../contexts/MasterDataContext';
 import SearchableSelect from './SearchableSelect';
@@ -17,41 +17,61 @@ interface DashboardProps {
   relayLogs: RelayRoomLog[];
   maintenanceLogs: MaintenanceReport[];
   ipsReports?: IPSReport[];
+  acReports?: ACFailureReport[];
+  movementReports?: MovementReport[];
+  jpcReports?: JPCReport[];
 }
 
 const inputFilterClass = "w-full px-3 py-2 bg-white border border-slate-300 rounded focus:border-[#005d8f] focus:ring-1 focus:ring-[#005d8f] outline-none text-sm text-slate-700 transition-all";
 
-const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceLogs, ipsReports = [] }) => {
+const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceLogs, ipsReports = [], acReports = [], movementReports = [], jpcReports = [] }) => {
   const { 
     flatOfficers, flatCSIs, flatStations,
     makes, reasons, ipsModules, ipsCompanies 
   } = useMasterData();
 
-  const [activeTab, setActiveTab] = useState<'failures' | 'relay' | 'maintenance' | 'ips'>('failures');
+  const [activeTab, setActiveTab] = useState<'failures' | 'relay' | 'maintenance' | 'ips' | 'ac' | 'movement' | 'jpc'>('failures');
   const [filters, setFilters] = useState<FilterState>(INITIAL_FILTERS);
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
+  // --- Helper: Calculate Duration ---
+  const calculateDuration = (start: string, end: string) => {
+    if (!start || !end) return { h: '-', m: '-' };
+    const [h1, m1] = start.split(':').map(Number);
+    const [h2, m2] = end.split(':').map(Number);
+    
+    let totalMins = (h2 * 60 + m2) - (h1 * 60 + m1);
+    if (totalMins < 0) totalMins += 24 * 60; // Handle over midnight check
+    
+    const hours = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
+    
+    const formattedHours = `${hours}:${mins.toString().padStart(2, '0')}`;
+    return { h: formattedHours, m: totalMins };
+  };
+
   // --- Dynamic Filter Logic ---
   
-  // 1. Available CSIs (Show all, or filter by Officer if selected)
   const availableCSIs = useMemo(() => {
       if (filters.sectionalOfficer) {
           return flatCSIs.filter(c => c.parentOfficer === filters.sectionalOfficer).map(c => c.name);
       }
-      return [];
+      return flatCSIs.map(c => c.name);
   }, [filters.sectionalOfficer, flatCSIs]);
 
-  // 2. Available Stations (Show all, or filter by CSI/Officer)
   const availableStations = useMemo(() => {
     if (filters.csi) {
         return flatStations.filter(s => s.parentCSI === filters.csi).map(s => s.code);
     }
-    return [];
-  }, [filters.csi, flatStations]);
+    if (filters.sectionalOfficer) {
+        return flatStations.filter(s => s.parentOfficer === filters.sectionalOfficer).map(s => s.code);
+    }
+    return flatStations.map(s => s.code);
+  }, [filters.sectionalOfficer, filters.csi, flatStations]);
 
 
-  // --- Failure Logic ---
+  // --- Filter Logic ---
   const filteredFailures = useMemo(() => {
     return failures.filter(r => {
       if (filters.sectionalOfficer && r.sectionalOfficer !== filters.sectionalOfficer) return false;
@@ -68,7 +88,6 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
     });
   }, [failures, filters]);
 
-  // --- Relay Logic ---
   const filteredRelayLogs = useMemo(() => {
     return relayLogs.filter(r => {
       if (filters.sectionalOfficer && r.sectionalOfficer !== filters.sectionalOfficer) return false;
@@ -80,11 +99,10 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
     });
   }, [relayLogs, filters]);
 
-  // --- Maintenance Logic ---
   const filteredMaintenanceLogs = useMemo(() => {
     return maintenanceLogs.filter(r => {
       if (filters.sectionalOfficer && r.sectionalOfficer !== filters.sectionalOfficer) return false;
-      if (filters.stationCode && r.stationMaintained !== filters.stationCode) return false;
+      if (filters.stationCode && !r.section.includes(filters.stationCode)) return false;
       if (filters.dateRangeStart && r.date < filters.dateRangeStart) return false;
       if (filters.dateRangeEnd && r.date > filters.dateRangeEnd) return false;
       if (filters.csi && r.csi !== filters.csi) return false;
@@ -92,7 +110,6 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
     });
   }, [maintenanceLogs, filters]);
 
-  // --- IPS Logic ---
   const filteredIPSReports = useMemo(() => {
       return ipsReports.filter(r => {
         if (filters.csi && r.csi !== filters.csi) return false;
@@ -102,7 +119,40 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
       });
   }, [ipsReports, filters]);
 
-  // --- Stats Calculation (Failures) ---
+  const filteredACReports = useMemo(() => {
+    return acReports.filter(r => {
+        if (filters.sectionalOfficer && r.sectionalOfficer !== filters.sectionalOfficer) return false;
+        if (filters.csi && r.csi !== filters.csi) return false;
+        if (filters.stationCode && r.locationCode !== filters.stationCode) return false;
+        if (filters.dateRangeStart && r.date < filters.dateRangeStart) return false;
+        if (filters.dateRangeEnd && r.date > filters.dateRangeEnd) return false;
+        return true;
+    });
+  }, [acReports, filters]);
+
+  const filteredMovementReports = useMemo(() => {
+      return movementReports.filter(r => {
+          if (filters.sectionalOfficer && r.sectionalOfficer !== filters.sectionalOfficer) return false;
+          if (filters.csi && r.csi !== filters.csi) return false;
+          // Filter by Move To or maybe extract station from designation? 
+          // For now, let's filter by matching "Move To" with selected station
+          if (filters.stationCode && r.moveTo !== filters.stationCode) return false;
+          if (filters.dateRangeStart && r.date < filters.dateRangeStart) return false;
+          if (filters.dateRangeEnd && r.date > filters.dateRangeEnd) return false;
+          return true;
+      });
+  }, [movementReports, filters]);
+
+  const filteredJPCReports = useMemo(() => {
+      return jpcReports.filter(r => {
+          if (filters.stationCode && r.station !== filters.stationCode) return false;
+          if (filters.dateRangeStart && r.jpcDate < filters.dateRangeStart) return false;
+          if (filters.dateRangeEnd && r.jpcDate > filters.dateRangeEnd) return false;
+          return true;
+      });
+  }, [jpcReports, filters]);
+
+  // --- Stats Calculation ---
   const failureStats = useMemo(() => {
     const total = filteredFailures.length;
     const amcCount = filteredFailures.filter(r => r.amc === 'Yes').length;
@@ -120,7 +170,6 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
     return { total, amcCount, commonReason, affectedStation };
   }, [filteredFailures]);
 
-   // --- Stats Calculation (Relay) ---
    const relayStats = useMemo(() => {
      const total = filteredRelayLogs.length;
      const uniqueStations = new Set(filteredRelayLogs.map(r => r.location)).size;
@@ -131,7 +180,6 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
      return { total, uniqueStations, activeCSI };
    }, [filteredRelayLogs]);
 
-   // --- Stats Calculation (Maintenance) ---
    const maintenanceStats = useMemo(() => {
       const total = filteredMaintenanceLogs.length;
       const typeCounts: Record<string, number> = {};
@@ -141,8 +189,33 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
       return { total, mostCommonType };
    }, [filteredMaintenanceLogs]);
 
+   const acStats = useMemo(() => {
+        const totalReports = filteredACReports.length;
+        const underAMC = filteredACReports.filter(r => r.underAMC === 'Yes').length;
+        const csiCounts: Record<string, number> = {};
+        filteredACReports.forEach(r => { csiCounts[r.csi] = (csiCounts[r.csi] || 0) + 1 });
+        const topCSI = Object.entries(csiCounts).sort((a,b) => b[1] - a[1])[0]?.[0] || 'N/A';
+        return { totalReports, underAMC, topCSI };
+   }, [filteredACReports]);
 
-  // --- Chart Data (Failures) ---
+   const movementStats = useMemo(() => {
+       const total = filteredMovementReports.length;
+       const destCounts: Record<string, number> = {};
+       filteredMovementReports.forEach(r => { destCounts[r.moveTo] = (destCounts[r.moveTo] || 0) + 1 });
+       const topDest = Object.entries(destCounts).sort((a,b) => b[1] - a[1])[0]?.[0] || 'N/A';
+       
+       return { total, topDest };
+   }, [filteredMovementReports]);
+
+   const jpcStats = useMemo(() => {
+       const totalReports = filteredJPCReports.length;
+       const totalPoints = filteredJPCReports.reduce((acc, r) => acc + r.totalPoints, 0);
+       const totalPending = filteredJPCReports.reduce((acc, r) => acc + r.pendingPoints, 0);
+       const inspectedToday = filteredJPCReports.reduce((acc, r) => acc + r.inspectedToday, 0);
+       return { totalReports, totalPoints, totalPending, inspectedToday };
+   }, [filteredJPCReports]);
+
+
   const reasonData = useMemo(() => {
     const counts: Record<string, number> = {};
     filteredFailures.forEach(r => {
@@ -164,7 +237,6 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
 
   // --- Handlers ---
   const handleFilterChange = (name: keyof FilterState, value: string) => {
-    // Logic for cascading resets in filters
     if (name === 'sectionalOfficer') {
          setFilters(prev => ({ ...prev, sectionalOfficer: value, csi: '', stationCode: '' }));
     } else if (name === 'csi') {
@@ -177,7 +249,46 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
   const resetFilters = () => setFilters(INITIAL_FILTERS);
   const toggleRow = (id: string) => setExpandedRow(expandedRow === id ? null : id);
 
-  const handleExport = () => {
+  const handleExport = async () => {
+    let url = '';
+    const queryParams = new URLSearchParams();
+
+    if (activeTab === 'ips') {
+        if (filters.csi) queryParams.append('csi__name', filters.csi);
+        if (filters.dateRangeStart) queryParams.append('submission_date__gte', filters.dateRangeStart);
+        if (filters.dateRangeEnd) queryParams.append('submission_date__lte', filters.dateRangeEnd);
+        url = `/api/forms/ips-reports/export-excel/?${queryParams.toString()}`;
+    } else if (activeTab === 'relay') {
+        if (filters.sectionalOfficer) queryParams.append('sectional_officer', filters.sectionalOfficer);
+        if (filters.csi) queryParams.append('csi', filters.csi);
+        if (filters.stationCode) queryParams.append('location__code', filters.stationCode);
+        if (filters.dateRangeStart) queryParams.append('log_date__gte', filters.dateRangeStart);
+        if (filters.dateRangeEnd) queryParams.append('log_date__lte', filters.dateRangeEnd);
+        url = `/api/forms/relay-logs/export-excel/?${queryParams.toString()}`;
+    } else if (activeTab === 'ac') {
+        if (filters.sectionalOfficer) queryParams.append('sectional_officer', filters.sectionalOfficer);
+        if (filters.csi) queryParams.append('csi', filters.csi);
+        if (filters.stationCode) queryParams.append('location_code', filters.stationCode); 
+        url = `/api/forms/ac-reports/export-excel/?${queryParams.toString()}`;
+    } else if (activeTab === 'movement') {
+        if (filters.sectionalOfficer) queryParams.append('sectional_officer', filters.sectionalOfficer);
+        if (filters.csi) queryParams.append('csi', filters.csi);
+        if (filters.dateRangeStart) queryParams.append('date__gte', filters.dateRangeStart);
+        if (filters.dateRangeEnd) queryParams.append('date__lte', filters.dateRangeEnd);
+        url = `/api/forms/movement-reports/export-excel/?${queryParams.toString()}`;
+    } else if (activeTab === 'jpc') {
+        if (filters.stationCode) queryParams.append('station', filters.stationCode);
+        if (filters.dateRangeStart) queryParams.append('jpc_date__gte', filters.dateRangeStart);
+        if (filters.dateRangeEnd) queryParams.append('jpc_date__lte', filters.dateRangeEnd);
+        url = `/api/forms/jpc-reports/export-excel/?${queryParams.toString()}`;
+    }
+
+    if (url) {
+        window.location.href = url;
+        return;
+    }
+
+    // Default CSV Export for others
     let csvContent = '';
     let filename = '';
     
@@ -205,93 +316,22 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
       const headers = Object.keys(dataToExport[0]);
       csvContent = [headers.join(','), ...dataToExport.map(row => headers.map(fieldName => `"${(row as any)[fieldName]?.toString().replace(/"/g, '""') || ''}"`).join(','))].join('\n');
 
-    } else if (activeTab === 'relay') {
-      filename = `Relay_Logs_${new Date().toISOString().split('T')[0]}.csv`;
-      const dataToExport = filteredRelayLogs.map(r => ({
-        Date: r.date,
-        'Location/Station': r.location,
-        'Opening Time': r.openingTime,
-        'Closing Time': r.closingTime,
-        'Remark/Reason': r.remarks,
-        CSI: r.csi,
-        'Opening No': r.snOpening,
-        'Closing No': r.snClosing,
-        'Code for Opening': r.openingCode,
-      }));
-       if (!dataToExport.length) { alert("No data"); return; }
-       const headers = Object.keys(dataToExport[0]);
-       csvContent = [headers.join(','), ...dataToExport.map(row => headers.map(fieldName => `"${(row as any)[fieldName]?.toString().replace(/"/g, '""') || ''}"`).join(','))].join('\n');
-
     } else if (activeTab === 'maintenance') {
       filename = `Maintenance_Logs_${new Date().toISOString().split('T')[0]}.csv`;
       const dataToExport = filteredMaintenanceLogs.map(r => ({
         ID: r.id,
         Date: r.date,
-        Name: r.name,
-        Designation: r.designation,
-        Station_Posted: r.stationPosted,
         Officer: r.sectionalOfficer,
         CSI: r.csi,
-        Station_Maintained: r.stationMaintained,
+        Section: r.section,
         Type: r.maintenanceType,
+        Asset_Numbers: r.assetNumbers,
         Work_Description: r.workDescription,
         Remarks: r.remarks
       }));
       if (!dataToExport.length) { alert("No data"); return; }
       const headers = Object.keys(dataToExport[0]);
       csvContent = [headers.join(','), ...dataToExport.map(row => headers.map(fieldName => `"${(row as any)[fieldName]?.toString().replace(/"/g, '""') || ''}"`).join(','))].join('\n');
-    
-    } else if (activeTab === 'ips') {
-        // IPS Matrix Export
-        filename = `IPS_Reports_Matrix_${new Date().toISOString().split('T')[0]}.csv`;
-        
-        // Header Row 1 (Companies)
-        let header1 = ['Date', 'CSI', 'Module'];
-        ipsCompanies.forEach(c => {
-            header1.push(c + ' (Def)', c + ' (Spare)', c + ' (Sp AMC)', c + ' (Def AMC)');
-        });
-        header1.push('TOTAL Def', 'TOTAL Spare', 'TOTAL Sp AMC', 'TOTAL Def AMC', 'Remarks');
-
-        const rows: string[] = [];
-        
-        filteredIPSReports.forEach(report => {
-            ipsModules.forEach(module => {
-                const rowData = [
-                    report.submissionDate,
-                    report.csi,
-                    module
-                ];
-
-                let rowDef = 0;
-                let rowSpare = 0;
-                let rowSpareAMC = 0;
-                let rowDefAMC = 0;
-
-                ipsCompanies.forEach(company => {
-                    const entry = report.entries.find(e => e.moduleType === module && e.company === company);
-                    const def = entry?.qtyDefective || 0;
-                    const spare = entry?.qtySpare || 0;
-                    const spareAMC = entry?.qtySpareAMC || 0;
-                    const defAMC = entry?.qtyDefectiveAMC || 0;
-
-                    rowData.push(def.toString(), spare.toString(), spareAMC.toString(), defAMC.toString());
-                    
-                    rowDef += def;
-                    rowSpare += spare;
-                    rowSpareAMC += spareAMC;
-                    rowDefAMC += defAMC;
-                });
-
-                rowData.push(rowDef.toString(), rowSpare.toString(), rowSpareAMC.toString(), rowDefAMC.toString());
-                
-                rowData.push(`"${(report.remarks || '').replace(/"/g, '""')}"`);
-
-                rows.push(rowData.join(','));
-            });
-        });
-
-        if (!rows.length) { alert("No data"); return; }
-        csvContent = [header1.join(','), ...rows].join('\n');
     }
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -307,7 +347,6 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
     }
   };
 
-  // --- Calculations for IPS Master View ---
   const ipsGrandTotals = useMemo(() => {
       const totals: Record<string, number> = {};
       const colKeys = ipsCompanies.flatMap(c => [`${c}-def`, `${c}-spare`, `${c}-spareAMC`, `${c}-defAMC`]);
@@ -344,7 +383,7 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
         </div>
       </div>
       
-      {/* 1. Tab Selection */}
+      {/* Tab Selection */}
       <div className="flex justify-center mb-6 overflow-x-auto animate-enter delay-100">
         <div className="bg-white p-1 rounded border border-slate-300 inline-flex whitespace-nowrap shadow-sm">
           <button 
@@ -375,10 +414,31 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
             <Zap className="w-4 h-4" />
             IPS Reports
           </button>
+          <button 
+             onClick={() => setActiveTab('ac')}
+             className={`flex items-center gap-2 px-5 py-2 rounded text-sm font-medium transition-all duration-300 ${activeTab === 'ac' ? 'bg-[#005d8f] text-white shadow' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <ThermometerSnowflake className="w-4 h-4" />
+            AC Reports
+          </button>
+          <button 
+             onClick={() => setActiveTab('movement')}
+             className={`flex items-center gap-2 px-5 py-2 rounded text-sm font-medium transition-all duration-300 ${activeTab === 'movement' ? 'bg-[#005d8f] text-white shadow' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <Navigation className="w-4 h-4" />
+            Movements
+          </button>
+          <button 
+             onClick={() => setActiveTab('jpc')}
+             className={`flex items-center gap-2 px-5 py-2 rounded text-sm font-medium transition-all duration-300 ${activeTab === 'jpc' ? 'bg-[#005d8f] text-white shadow' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <FileCheck className="w-4 h-4" />
+            JPC Done
+          </button>
         </div>
       </div>
 
-      {/* 2. Filter Panel (Moved to Top) */}
+      {/* Filter Panel */}
       <div className="relative z-30 bg-white rounded-lg shadow-sm border border-slate-200 animate-enter delay-200 mb-6">
         <div className="p-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center rounded-t-lg">
             <div className="flex items-center gap-2">
@@ -403,9 +463,6 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                 onChange={e => handleFilterChange('sectionalOfficer', e.target.value)}
                 placeholder="All Officers"
             />
-
-            {/* Cascading Filter: Only show CSIs if Officer is selected */}
-            {filters.sectionalOfficer && (
              <SearchableSelect 
                 name="csi"
                 value={filters.csi}
@@ -413,9 +470,6 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                 onChange={e => handleFilterChange('csi', e.target.value)}
                 placeholder="All CSIs"
             />
-            )}
-
-            {filters.csi && (
             <SearchableSelect 
                 name="stationCode"
                 value={filters.stationCode}
@@ -423,7 +477,6 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                 onChange={e => handleFilterChange('stationCode', e.target.value)}
                 placeholder="All Stations"
             />
-            )}
              <div className="col-span-1 md:col-span-1 grid grid-cols-2 gap-2">
                <input type="date" className={inputFilterClass} placeholder="Start Date" value={filters.dateRangeStart} onChange={e => handleFilterChange('dateRangeStart', e.target.value)} />
                <input type="date" className={inputFilterClass} placeholder="End Date" value={filters.dateRangeEnd} onChange={e => handleFilterChange('dateRangeEnd', e.target.value)} />
@@ -452,11 +505,10 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                     </select>
                 </>
             )}
-            
         </div>
       </div>
 
-      {/* 3. Overview Cards (Conditional) */}
+      {/* Overview Cards */}
       <div className="relative z-10 animate-enter delay-200">
         {activeTab === 'failures' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -489,9 +541,31 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                 <StatCard title="Companies" value={ipsCompanies.length} icon={<CheckCircle className="text-green-600" />} subtext="Vendors Listed" />
             </div>
         )}
+        {activeTab === 'ac' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatCard title="Total Reports" value={acStats.totalReports} icon={<ThermometerSnowflake className="text-cyan-600" />} subtext="AC Fault Logs" />
+                <StatCard title="AMC Covered" value={acStats.underAMC} icon={<CheckCircle className="text-green-600" />} subtext={`${acStats.totalReports > 0 ? ((acStats.underAMC/acStats.totalReports)*100).toFixed(0) : 0}% of faults`} />
+                <StatCard title="Most Affected CSI" value={acStats.topCSI} icon={<AlertTriangle className="text-orange-500" />} isText />
+            </div>
+        )}
+        {activeTab === 'movement' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatCard title="Total Movements" value={movementStats.total} icon={<Navigation className="text-indigo-600" />} subtext="Logs Submitted" />
+                <StatCard title="Top Destination" value={movementStats.topDest} icon={<MapPin className="text-green-600" />} isText />
+                <StatCard title="Staff Active" value={new Set(filteredMovementReports.map(r => r.name)).size} icon={<FileText className="text-orange-500" />} subtext="Unique Persons" />
+            </div>
+        )}
+        {activeTab === 'jpc' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatCard title="Reports" value={jpcStats.totalReports} icon={<FileCheck className="text-blue-600" />} subtext="JPC Logs" />
+                <StatCard title="Points Inspected" value={jpcStats.totalPoints} icon={<CheckCircle className="text-green-600" />} subtext="Total Tracked" />
+                <StatCard title="Pending" value={jpcStats.totalPending} icon={<AlertTriangle className="text-orange-500" />} subtext="To be inspected" />
+                <StatCard title="Done Today" value={jpcStats.inspectedToday} icon={<Activity className="text-purple-500" />} subtext="Daily Progress" />
+            </div>
+        )}
       </div>
 
-      {/* 4. Charts Row (Only for Failures currently) */}
+      {/* Charts Row */}
       {activeTab === 'failures' && (
         <div className="relative z-0 grid grid-cols-1 lg:grid-cols-3 gap-6 animate-enter delay-300">
             <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 col-span-2 hover:border-[#005d8f] transition-colors">
@@ -526,7 +600,7 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
         </div>
       )}
 
-      {/* 5. Data Tables */}
+      {/* Data Tables */}
       <div className="relative z-0 bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden animate-enter delay-300">
         <div className="p-3 border-b border-slate-200 flex justify-between items-center bg-slate-50">
             <h3 className="font-semibold text-slate-700 text-sm uppercase">
@@ -534,10 +608,16 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                 {activeTab === 'relay' && 'Relay Room Logs'}
                 {activeTab === 'maintenance' && 'Maintenance Logs'}
                 {activeTab === 'ips' && 'Weekly IPS Reports'}
+                {activeTab === 'ac' && 'AC Unit Reports'}
+                {activeTab === 'movement' && 'SI/CSI Movement Reports'}
+                {activeTab === 'jpc' && 'JPC Done Reports'}
                 <span className="ml-2 text-slate-400 font-normal">
                     ({activeTab === 'failures' ? filteredFailures.length : 
                       activeTab === 'relay' ? filteredRelayLogs.length : 
                       activeTab === 'maintenance' ? filteredMaintenanceLogs.length : 
+                      activeTab === 'ac' ? filteredACReports.length :
+                      activeTab === 'movement' ? filteredMovementReports.length :
+                      activeTab === 'jpc' ? filteredJPCReports.length :
                       filteredIPSReports.length})
                 </span>
             </h3>
@@ -546,12 +626,11 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
               className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-300 rounded text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-[#005d8f] transition-all hover:-translate-y-0.5 shadow-sm"
             >
               <Download className="w-4 h-4" />
-              Export CSV
+              {['ips', 'relay', 'ac', 'movement', 'jpc'].includes(activeTab) ? 'Export Excel' : 'Export CSV'}
             </button>
         </div>
         <div className="overflow-x-auto">
             {activeTab === 'failures' && (
-                // FAILURE TABLE
                  <table className="w-full text-sm text-left text-slate-600">
                     <thead className="bg-slate-100 text-slate-700 uppercase font-bold text-xs">
                         <tr>
@@ -605,7 +684,7 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                                                     <div>
                                                         <h4 className="font-bold text-slate-900 mb-2 uppercase text-xs">Incident Details</h4>
                                                         <p><span className="text-slate-500">Route:</span> {report.route}</p>
-                                                        <p><span className="text-slate-500">Time:</span> {new Date(report.failureDateTime).toLocaleString()}</p>
+                                                        <p><span className="text-slate-500">Time:</span> {new Date(report.failureDateTime).toLocaleString('en-GB', { hour12: false })}</p>
                                                     </div>
                                                     <div>
                                                         <h4 className="font-bold text-slate-900 mb-2 uppercase text-xs">Remarks</h4>
@@ -624,90 +703,91 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
             )}
             
             {activeTab === 'relay' && (
-                // RELAY LOG TABLE
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-center border-collapse text-slate-700 min-w-[1400px]">
+                      <thead>
+                          <tr className="bg-slate-100 text-slate-800 font-bold uppercase border-b border-slate-300">
+                              <th className="p-3 border-r border-slate-300 whitespace-nowrap">Sr No</th>
+                              <th className="p-3 border-r border-slate-300 whitespace-nowrap">Date</th>
+                              <th className="p-3 border-r border-slate-300 whitespace-nowrap">Station</th>
+                              <th className="p-3 border-r border-slate-300 whitespace-nowrap">Opening Time</th>
+                              <th className="p-3 border-r border-slate-300 whitespace-nowrap">Closing Time</th>
+                              <th className="p-3 border-r border-slate-300 whitespace-nowrap">Dur (Hrs)</th>
+                              <th className="p-3 border-r border-slate-300 whitespace-nowrap">Dur (Min)</th>
+                              <th className="p-3 border-r border-slate-300 whitespace-nowrap">Reason for opening</th>
+                              <th className="p-3 border-r border-slate-300 whitespace-nowrap">CSI</th>
+                              <th className="p-3 border-r border-slate-300 whitespace-nowrap">Sr.No Open</th>
+                              <th className="p-3 border-r border-slate-300 whitespace-nowrap">Sr.No Close</th>
+                              <th className="p-3 border-r border-slate-300 whitespace-nowrap">D/L Open</th>
+                              <th className="p-3 border-r border-slate-300 whitespace-nowrap">D/L Close</th>
+                              <th className="p-3 border-r border-slate-300 whitespace-nowrap">Code</th>
+                          </tr>
+                      </thead>
+                      <tbody>
+                          {(filteredRelayLogs).map((item, index) => {
+                              const duration = calculateDuration(item.openingTime, item.closingTime);
+                              return (
+                                  <tr key={index} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+                                      <td className="p-2 border-r border-slate-200 font-bold">{index + 1}</td>
+                                      <td className="p-2 border-r border-slate-200">{item.date}</td>
+                                      <td className="p-2 border-r border-slate-200 font-bold text-slate-900">{item.location}</td>
+                                      <td className="p-2 border-r border-slate-200 font-mono text-green-700">{item.openingTime}</td>
+                                      <td className="p-2 border-r border-slate-200 font-mono text-red-700">{item.closingTime}</td>
+                                      <td className="p-2 border-r border-slate-200 font-mono">{duration.h}</td>
+                                      <td className="p-2 border-r border-slate-200 font-mono">{duration.m}</td>
+                                      <td className="p-2 border-r border-slate-200 text-left max-w-xs truncate" title={item.remarks}>{item.remarks}</td>
+                                      <td className="p-2 border-r border-slate-200">{item.csi}</td>
+                                      <td className="p-2 border-r border-slate-200 font-bold">{item.snOpening}</td>
+                                      <td className="p-2 border-r border-slate-200 font-bold">{item.snClosing}</td>
+                                      <td className="p-2 border-r border-slate-200 bg-slate-50"></td> 
+                                      <td className="p-2 border-r border-slate-200 bg-slate-50"></td>
+                                      <td className="p-2 border-r border-slate-200 bg-slate-100 text-[10px] font-bold text-slate-600">{item.openingCode}</td>
+                                  </tr>
+                              );
+                          })}
+                      </tbody>
+                  </table>
+                </div>
+            )}
+
+            {activeTab === 'maintenance' && (
                 <table className="w-full text-sm text-left text-slate-600">
                     <thead className="bg-slate-100 text-slate-700 uppercase font-bold text-xs">
                         <tr>
                             <th className="px-6 py-3">ID</th>
                             <th className="px-6 py-3">Date</th>
-                            <th className="px-6 py-3">Location</th>
-                            <th className="px-6 py-3">Times</th>
-                            <th className="px-6 py-3">Staff</th>
-                            <th className="px-6 py-3">Serial No. (O/C)</th>
-                            <th className="px-6 py-3">Auth Code</th>
+                            <th className="px-6 py-3">Officer</th>
+                            <th className="px-6 py-3">CSI</th>
+                            <th className="px-6 py-3">Section</th>
+                            <th className="px-6 py-3">Type</th>
+                            <th className="px-6 py-3">Asset Nos.</th>
+                            <th className="px-6 py-3">Work Done</th>
                             <th className="px-6 py-3">Remarks</th>
                         </tr>
                     </thead>
                     <tbody>
-                         {filteredRelayLogs.length === 0 ? (
-                            <tr><td colSpan={8} className="text-center py-8 text-slate-400">No relay logs found.</td></tr>
-                        ) : (
-                            filteredRelayLogs.map((report) => (
-                                <tr key={report.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                                    <td className="px-6 py-4 font-mono text-slate-500">#{report.id}</td>
-                                    <td className="px-6 py-4">{report.date}</td>
-                                    <td className="px-6 py-4 font-bold text-slate-800">{report.location}</td>
-                                    <td className="px-6 py-4 text-xs font-mono">
-                                        <div className="flex items-center gap-1 text-green-700"><span className="w-8">Open:</span> {report.openingTime}</div>
-                                        <div className="flex items-center gap-1 text-red-700"><span className="w-8">Close:</span> {report.closingTime}</div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="font-medium text-slate-800">{report.name}</div>
-                                        <div className="text-xs text-slate-500">{report.designation} ({report.stationPosted})</div>
-                                    </td>
-                                    <td className="px-6 py-4 font-mono text-slate-600 font-bold">
-                                         {report.snOpening} / {report.snClosing}
-                                    </td>
-                                    <td className="px-6 py-4">
-                                         <span className="font-mono bg-slate-100 px-2 py-1 rounded text-xs border border-slate-200">{report.openingCode}</span>
-                                    </td>
-                                    <td className="px-6 py-4 max-w-xs truncate text-slate-500 italic" title={report.remarks}>
-                                        {report.remarks}
-                                    </td>
-                                </tr>
-                            ))
-                         )}
-                    </tbody>
-                </table>
-            )}
-
-            {activeTab === 'maintenance' && (
-                // MAINTENANCE LOG TABLE
-                <table className="w-full text-sm text-left text-slate-600">
-                    <thead className="bg-slate-100 text-slate-700 uppercase font-bold text-xs">
-                        <tr>
-                            <th className="px-6 py-3">ID</th>
-                            <th className="px-6 py-3">Date</th>
-                            <th className="px-6 py-3">Station</th>
-                            <th className="px-6 py-3">Type</th>
-                            <th className="px-6 py-3">Work Done</th>
-                            <th className="px-6 py-3">Staff</th>
-                            <th className="px-6 py-3">Officer</th>
-                        </tr>
-                    </thead>
-                    <tbody>
                          {filteredMaintenanceLogs.length === 0 ? (
-                            <tr><td colSpan={7} className="text-center py-8 text-slate-400">No maintenance logs found.</td></tr>
+                            <tr><td colSpan={8} className="text-center py-8 text-slate-400">No maintenance logs found.</td></tr>
                         ) : (
                             filteredMaintenanceLogs.map((report) => (
                                 <tr key={report.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                                     <td className="px-6 py-4 font-mono text-slate-500">#{report.id}</td>
                                     <td className="px-6 py-4">{report.date}</td>
-                                    <td className="px-6 py-4 font-bold text-slate-800">{report.stationMaintained}</td>
+                                    <td className="px-6 py-4 text-slate-500">{report.sectionalOfficer}</td>
+                                    <td className="px-6 py-4 text-slate-500">{report.csi}</td>
+                                    <td className="px-6 py-4 font-bold text-slate-800">{report.section}</td>
                                     <td className="px-6 py-4">
                                          <span className="px-2 py-1 rounded text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
                                             {report.maintenanceType}
                                          </span>
                                     </td>
-                                    <td className="px-6 py-4 max-w-xs text-xs">
-                                        <div className="font-bold text-slate-700 mb-1">Details:</div>
-                                        <p className="text-slate-500 line-clamp-2" title={report.workDescription}>{report.workDescription}</p>
+                                    <td className="px-6 py-4 max-w-xs text-xs font-mono text-slate-700">
+                                        {report.assetNumbers || <span className="text-slate-300">-</span>}
                                     </td>
-                                     <td className="px-6 py-4">
-                                        <div className="font-medium text-slate-800">{report.name}</div>
-                                        <div className="text-xs text-slate-500">{report.designation}</div>
+                                    <td className="px-6 py-4 max-w-xs text-xs text-slate-600">
+                                        {report.workDescription || <span className="text-slate-300">-</span>}
                                     </td>
-                                    <td className="px-6 py-4 text-slate-500">{report.sectionalOfficer}</td>
+                                    <td className="px-6 py-4 text-slate-500 truncate max-w-xs" title={report.remarks}>{report.remarks}</td>
                                 </tr>
                             ))
                          )}
@@ -716,11 +796,9 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
             )}
 
              {activeTab === 'ips' && (
-                // IPS REPORT TABLE (Master Matrix View)
                 <div className="overflow-x-auto pb-4">
                     <table className="w-full text-[10px] md:text-xs text-center border-collapse text-slate-700 min-w-[1500px]">
                         <thead>
-                            {/* Header Row 1: Companies */}
                             <tr className="bg-slate-100 text-slate-800 font-bold uppercase border-b border-slate-300">
                                 <th rowSpan={2} className="p-2 border-r border-slate-300 w-10">Sr No</th>
                                 <th rowSpan={2} className="p-2 border-r border-slate-300 w-24">CSI</th>
@@ -733,7 +811,6 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                                 <th colSpan={4} className="p-2 border-r border-slate-300 bg-slate-200">TOTAL</th>
                                 <th rowSpan={2} className="p-2 w-48 bg-slate-50">Remarks</th>
                             </tr>
-                            {/* Header Row 2: Sub-columns */}
                             <tr className="bg-slate-50 text-[9px] font-bold text-slate-600 border-b border-slate-400">
                                 {ipsCompanies.map(company => (
                                     <React.Fragment key={`${company}-sub`}>
@@ -754,7 +831,6 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                                 <tr><td colSpan={ipsCompanies.length * 4 + 7} className="p-8 text-center text-slate-400 italic">No IPS Reports Found</td></tr>
                             ) : (
                                 filteredIPSReports.map((report, rIndex) => {
-                                    // Calculate report-level totals
                                     const reportTotals = ipsCompanies.map(c => ({
                                         def: report.entries.filter(e => e.company === c).reduce((a, b) => a + b.qtyDefective, 0),
                                         spare: report.entries.filter(e => e.company === c).reduce((a, b) => a + b.qtySpare, 0),
@@ -771,36 +847,24 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
 
                                     return (
                                         <React.Fragment key={report.id}>
-                                            {/* Render Module Rows */}
                                             {ipsModules.map((module, mIndex) => {
-                                                // Calculate Row Total (Horizontal)
                                                 let rowDef = 0, rowSpare = 0, rowSpareAMC = 0, rowDefAMC = 0;
-                                                
                                                 return (
                                                     <tr key={`${report.id}-${module}`} className="border-b border-slate-100 hover:bg-yellow-50">
-                                                        {/* Merged Cells for CSI and Sr No */}
                                                         {mIndex === 0 && (
                                                             <>
                                                                 <td rowSpan={8} className="p-2 border-r border-slate-300 bg-white font-bold align-middle">{rIndex + 1}</td>
                                                                 <td rowSpan={8} className="p-2 border-r border-slate-300 bg-white font-bold align-middle">{report.csi}</td>
                                                             </>
                                                         )}
-                                                        
                                                         <td className="p-2 text-left border-r border-slate-300 font-medium bg-slate-50">{module}</td>
-                                                        
-                                                        {/* Data Cells */}
                                                         {ipsCompanies.map(company => {
                                                             const entry = report.entries.find(e => e.moduleType === module && e.company === company);
                                                             const def = entry?.qtyDefective || 0;
                                                             const spare = entry?.qtySpare || 0;
                                                             const spareAMC = entry?.qtySpareAMC || 0;
                                                             const defAMC = entry?.qtyDefectiveAMC || 0;
-                                                            
-                                                            rowDef += def;
-                                                            rowSpare += spare;
-                                                            rowSpareAMC += spareAMC;
-                                                            rowDefAMC += defAMC;
-
+                                                            rowDef += def; rowSpare += spare; rowSpareAMC += spareAMC; rowDefAMC += defAMC;
                                                             return (
                                                                 <React.Fragment key={`${report.id}-${module}-${company}`}>
                                                                     <td className={`p-1 border-r border-slate-200 ${def > 0 ? 'text-red-600 font-bold bg-red-50' : 'text-slate-300'}`}>{def}</td>
@@ -810,25 +874,13 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                                                                 </React.Fragment>
                                                             );
                                                         })}
-                                                        
-                                                        {/* Row Totals */}
                                                         <td className="p-1 border-r border-slate-200 bg-slate-100 font-bold">{rowDef}</td>
                                                         <td className="p-1 border-r border-slate-200 bg-slate-100 font-bold">{rowSpare}</td>
                                                         <td className="p-1 border-r border-slate-200 bg-slate-100 font-bold">{rowSpareAMC}</td>
                                                         <td className="p-1 border-r border-slate-300 bg-slate-100 font-bold">{rowDefAMC}</td>
-                                                        
-                                                        {/* Merged Remarks */}
-                                                        {mIndex === 0 && (
-                                                            <td rowSpan={8} className="p-2 text-left align-middle text-[10px] text-slate-500 italic bg-white border-l border-slate-300 max-w-xs break-words">
-                                                                {report.remarks}
-                                                                <div className="mt-1 text-[9px] text-slate-400 not-italic">Date: {report.submissionDate}</div>
-                                                            </td>
-                                                        )}
                                                     </tr>
                                                 );
                                             })}
-                                            
-                                            {/* Report Summary Row (The 8th row in block) */}
                                             <tr className="bg-slate-200 font-bold text-slate-800 border-b-4 border-slate-400">
                                                 <td className="p-2 border-r border-slate-300 text-right uppercase tracking-wider">TOTAL</td>
                                                 {reportTotals.map((tot, idx) => (
@@ -849,25 +901,16 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                                 })
                             )}
                         </tbody>
-                        {/* Grand Footer for all Filtered Data */}
                         {filteredIPSReports.length > 0 && (
                             <tfoot className="bg-[#005d8f] text-white font-bold border-t-4 border-orange-500">
                                 <tr>
                                     <td colSpan={3} className="p-3 text-right uppercase tracking-widest text-xs border-r border-white/20">Grand Total</td>
                                     {ipsCompanies.map(company => (
                                         <React.Fragment key={`grand-${company}`}>
-                                            <td className="p-2 border-r border-white/20">
-                                                {ipsGrandTotals.totals[`${company}-def`]}
-                                            </td>
-                                            <td className="p-2 border-r border-white/20">
-                                                {ipsGrandTotals.totals[`${company}-spare`]}
-                                            </td>
-                                            <td className="p-2 border-r border-white/20">
-                                                {ipsGrandTotals.totals[`${company}-spareAMC`]}
-                                            </td>
-                                            <td className="p-2 border-r border-white/30">
-                                                {ipsGrandTotals.totals[`${company}-defAMC`]}
-                                            </td>
+                                            <td className="p-2 border-r border-white/20">{ipsGrandTotals.totals[`${company}-def`]}</td>
+                                            <td className="p-2 border-r border-white/20">{ipsGrandTotals.totals[`${company}-spare`]}</td>
+                                            <td className="p-2 border-r border-white/20">{ipsGrandTotals.totals[`${company}-spareAMC`]}</td>
+                                            <td className="p-2 border-r border-white/30">{ipsGrandTotals.totals[`${company}-defAMC`]}</td>
                                         </React.Fragment>
                                     ))}
                                     <td className="p-2 border-r border-white/20 bg-orange-500">{ipsGrandTotals.grandDef}</td>
@@ -878,6 +921,115 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                                 </tr>
                             </tfoot>
                         )}
+                    </table>
+                </div>
+            )}
+
+            {activeTab === 'ac' && (
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left text-slate-600">
+                        <thead className="bg-slate-100 text-slate-700 uppercase font-bold text-xs">
+                            <tr>
+                                <th className="px-6 py-3">Date</th>
+                                <th className="px-6 py-3">Location</th>
+                                <th className="px-6 py-3">AC Type</th>
+                                <th className="px-6 py-3">Total Units</th>
+                                <th className="px-6 py-3">Failed</th>
+                                <th className="px-6 py-3">Failure Time</th>
+                                <th className="px-6 py-3">AMC</th>
+                                <th className="px-6 py-3">Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredACReports.length === 0 ? (
+                                <tr><td colSpan={8} className="text-center py-8 text-slate-400">No AC reports found.</td></tr>
+                            ) : (
+                                filteredACReports.map((report) => (
+                                    <tr key={report.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                                        <td className="px-6 py-4">{report.date}</td>
+                                        <td className="px-6 py-4 font-bold text-slate-800">{report.locationCode}</td>
+                                        <td className="px-6 py-4">{report.acType}</td>
+                                        <td className="px-6 py-4">{report.totalACUnits}</td>
+                                        <td className="px-6 py-4 text-red-600 font-bold">{report.totalFailCount}</td>
+                                        <td className="px-6 py-4 text-xs">{new Date(report.failureDateTime).toLocaleString('en-GB', { hour12: false })}</td>
+                                        <td className="px-6 py-4 text-center">
+                                            {report.underAMC === 'Yes' ? <span className="text-green-600 font-bold text-xs">YES</span> : <span className="text-slate-400 text-xs">NO</span>}
+                                        </td>
+                                        <td className="px-6 py-4 max-w-xs truncate italic text-slate-500" title={report.remarks}>{report.remarks}</td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {activeTab === 'movement' && (
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left text-slate-600">
+                        <thead className="bg-slate-100 text-slate-700 uppercase font-bold text-xs">
+                            <tr>
+                                <th className="px-6 py-3">Date</th>
+                                <th className="px-6 py-3">Name</th>
+                                <th className="px-6 py-3">Desig</th>
+                                <th className="px-6 py-3">From</th>
+                                <th className="px-6 py-3">To</th>
+                                <th className="px-6 py-3">Work Done</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredMovementReports.length === 0 ? (
+                                <tr><td colSpan={6} className="text-center py-8 text-slate-400">No movement reports found.</td></tr>
+                            ) : (
+                                filteredMovementReports.map((report) => (
+                                    <tr key={report.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                                        <td className="px-6 py-4 text-xs">{report.date}</td>
+                                        <td className="px-6 py-4 font-medium text-slate-800">{report.name}</td>
+                                        <td className="px-6 py-4 font-mono text-xs">{report.designation}</td>
+                                        <td className="px-6 py-4 text-slate-600">{report.moveFrom}</td>
+                                        <td className="px-6 py-4 font-bold text-indigo-700">{report.moveTo}</td>
+                                        <td className="px-6 py-4 text-xs max-w-xs truncate" title={report.workDone}>{report.workDone}</td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {activeTab === 'jpc' && (
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left text-slate-600">
+                        <thead className="bg-slate-100 text-slate-700 uppercase font-bold text-xs">
+                            <tr>
+                                <th className="px-6 py-3">JPC Date</th>
+                                <th className="px-6 py-3">Station</th>
+                                <th className="px-6 py-3">Total Points</th>
+                                <th className="px-6 py-3">Today</th>
+                                <th className="px-6 py-3">Cumulated</th>
+                                <th className="px-6 py-3">Pending</th>
+                                <th className="px-6 py-3">Insp. By</th>
+                                <th className="px-6 py-3">Name</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredJPCReports.length === 0 ? (
+                                <tr><td colSpan={8} className="text-center py-8 text-slate-400">No JPC reports found.</td></tr>
+                            ) : (
+                                filteredJPCReports.map((report) => (
+                                    <tr key={report.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                                        <td className="px-6 py-4">{report.jpcDate}</td>
+                                        <td className="px-6 py-4 font-bold text-slate-800">{report.station}</td>
+                                        <td className="px-6 py-4">{report.totalPoints}</td>
+                                        <td className="px-6 py-4 text-green-600 font-bold">+{report.inspectedToday}</td>
+                                        <td className="px-6 py-4">{report.totalInspectedCum}</td>
+                                        <td className="px-6 py-4 text-orange-600 font-medium">{report.pendingPoints}</td>
+                                        <td className="px-6 py-4">{report.inspectionBy}</td>
+                                        <td className="px-6 py-4 font-medium">{report.inspectorName}</td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
                     </table>
                 </div>
             )}

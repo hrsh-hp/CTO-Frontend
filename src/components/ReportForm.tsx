@@ -1,8 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { 
-  DESIGNATIONS, ROUTES, MAKES, REASONS 
-} from '../constants';
+import { ROUTES, DEFECTIVE_LOCATIONS } from '../constants';
 import { useMasterData } from '../contexts/MasterDataContext';
 import type { FailureReport } from '../types';
 import { Send, Save, CheckSquare, Square, ArrowLeft, Loader2, Activity } from 'lucide-react';
@@ -16,14 +14,33 @@ interface ReportFormProps {
 const inputClass = "w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:border-[#005d8f] focus:ring-4 focus:ring-[#005d8f]/10 outline-none text-slate-700 placeholder:text-slate-400 text-sm transition-all duration-200";
 const labelClass = "block text-[11px] font-semibold text-slate-500 mb-1.5 uppercase tracking-wider";
 
+// Helper to get CSRF token
+const getCookie = (name: string) => {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+};
+
 const ReportForm: React.FC<ReportFormProps> = ({ onSubmit }) => {
   const { 
     flatOfficers, 
+    flatOfficersList,
     flatCSIs, 
     flatStations,
-    designations, // from context (dynamic)
-    makes,        // from context (dynamic)
-    reasons       // from context (dynamic)
+    designations, 
+    makes,        
+    reasons,
+    rawMakes,
+    rawReasons
   } = useMasterData();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -36,7 +53,8 @@ const ReportForm: React.FC<ReportFormProps> = ({ onSubmit }) => {
     postingStationCode: '',
     toLocation: '',
     route: '',
-    make: 'Ravel' as 'Ravel' | 'Vighnharta',
+    make: '',
+    defectiveAt: '',
     failureDateTime: '',
     reason: [] as string[],
     remarks: '',
@@ -48,38 +66,42 @@ const ReportForm: React.FC<ReportFormProps> = ({ onSubmit }) => {
   
   // 1. Available CSIs
   // If Officer selected -> Filter CSIs by Officer
-  // If NO Officer selected -> Show ALL CSIs (Logic from user request)
+  // If NO Officer selected -> Show ALL CSIs
   const availableCSIs = useMemo(() => {
     if (formData.sectionalOfficer) {
       return flatCSIs
         .filter(c => c.parentOfficer === formData.sectionalOfficer)
         .map(c => c.name);
     }
-    // Return ALL CSIs if no officer is selected
     return flatCSIs.map(c => c.name);
   }, [formData.sectionalOfficer, flatCSIs]);
 
   // 2. Available Stations
   // If CSI selected -> Filter by CSI
   // If Officer selected (but no CSI) -> Filter by Officer
-  // If NOTHING selected -> Show ALL Stations (Logic: Direct station selection)
+  // If NOTHING selected -> Show ALL Stations
   const availableStations = useMemo(() => {
+    let stations: string[] = [];
     if (formData.csi) {
-      return flatStations
+      stations = flatStations
         .filter(s => s.parentCSI === formData.csi)
         .map(s => s.code);
-    }
-    if (formData.sectionalOfficer) {
-      return flatStations
+    } else if (formData.sectionalOfficer) {
+      stations = flatStations
         .filter(s => s.parentOfficer === formData.sectionalOfficer)
         .map(s => s.code);
+    } else {
+      stations = flatStations.map(s => s.code);
     }
-    // Return ALL Stations if no filters applied
-    return flatStations.map(s => s.code);
+    return Array.from(new Set(stations));
   }, [formData.sectionalOfficer, formData.csi, flatStations]);
 
   // 3. To Location (Affected Location) - Usually same logic as Available Stations
-  const allLocationCodes = useMemo(() => flatStations.map(s => s.code), [flatStations]);
+  // Use a fallback just in case flatStations is empty initially (should resolve with context)
+  const allLocationCodes = useMemo(() => {
+    const codes = flatStations.length > 0 ? flatStations.map(s => s.code) : [];
+    return Array.from(new Set(codes));
+  }, [flatStations]);
 
 
   const handleChange = (e: { target: { name: string; value: string } } | React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -115,7 +137,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ onSubmit }) => {
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.reason.length === 0) {
       alert("Please select at least one reason for failure.");
@@ -123,12 +145,65 @@ const ReportForm: React.FC<ReportFormProps> = ({ onSubmit }) => {
     }
     
     setIsSubmitting(true);
+
+    // Lookup IDs
+    const officerId = flatOfficersList.find(o => o.name === formData.sectionalOfficer)?.id;
+    const csiId = flatCSIs.find(c => c.name === formData.csi)?.id;
+    const stationId = flatStations.find(s => s.code === formData.postingStationCode)?.id;
+    const locationId = flatStations.find(s => s.code === formData.toLocation)?.id;
+    const makeId = rawMakes.find(m => m.name === formData.make)?.id;
+    const reasonIds = formData.reason.map(rText => rawReasons.find(r => r.text === rText)?.id).filter(id => id !== undefined);
+
+    // 1. Backend Payload (snake_case)
+    const apiPayload = {
+      reporter_name: formData.name,
+      report_date: formData.date,
+      sectional_officer: officerId,
+      csi_unit: csiId,
+      designation: formData.designation, // Assuming string is fine, or need ID?
+      posting_station: stationId,
+      affected_location: locationId,
+      route: formData.route,
+      make: makeId,
+      defective_at: formData.defectiveAt,
+      failure_datetime: formData.failureDateTime,
+      reasons: reasonIds, 
+      remarks: formData.remarks,
+      amc: formData.amc,
+      warranty: formData.warranty,
+    };
+
+    // 2. Frontend Payload (camelCase)
+    const appPayload = {
+        ...formData
+    };
     
-    // Simulate network delay
+    try {
+        const csrftoken = getCookie('csrftoken');
+        const response = await fetch('/api/forms/failure-reports/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken || '',
+            },
+            credentials: 'include',
+            body: JSON.stringify(apiPayload)
+        });
+
+        if (response.ok) {
+            console.log("✅ Failure Report saved to DB.");
+        } else {
+            console.warn("⚠️ API Error:", await response.text());
+        }
+    } catch (err) {
+        console.error("❌ Network Error:", err);
+    }
+
+    // Optimistic Update
     setTimeout(() => {
-        onSubmit(formData);
+        onSubmit(appPayload);
         setIsSubmitting(false);
-    }, 1000);
+    }, 500);
   };
 
   return (
@@ -274,8 +349,20 @@ const ReportForm: React.FC<ReportFormProps> = ({ onSubmit }) => {
               </div>
 
               <div className="form-group">
+                <label className={labelClass}>Defective at (Location) <span className="text-red-500">*</span></label>
+                <SearchableSelect 
+                  name="defectiveAt" 
+                  value={formData.defectiveAt} 
+                  options={DEFECTIVE_LOCATIONS} 
+                  onChange={handleChange} 
+                  required 
+                  placeholder="Select..."
+                />
+              </div>
+
+              <div className="form-group">
                 <label className={labelClass}>Failure Date & Time <span className="text-red-500">*</span></label>
-                <input type="datetime-local" name="failureDateTime" required className={inputClass} value={formData.failureDateTime} onChange={handleChange} />
+                <input type="datetime-local" name="failureDateTime" required className={inputClass} value={formData.failureDateTime} onChange={handleChange} step="60" />
               </div>
 
               <div className="form-group md:col-span-2">

@@ -3,16 +3,32 @@ import React, { useState, useMemo } from 'react';
 import { RELAY_AUTH_CODES } from '../constants';
 import { useMasterData } from '../contexts/MasterDataContext';
 import type { RelayRoomLog } from '../types';
-import { Key, Save, ArrowLeft, Hash, Info, Loader2 } from 'lucide-react';
+import { Key, Save, ArrowLeft, Hash, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import SearchableSelect from './SearchableSelect';
 
 interface RelayRoomFormProps {
-  onSubmit: (report: Omit<RelayRoomLog, 'id' | 'submittedAt' | 'type' | 'snOpening' | 'snClosing'>) => void;
+  onSubmit: (report: Omit<RelayRoomLog, 'id' | 'submittedAt' | 'type'>) => void;
 }
 
 const inputClass = "w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:border-[#005d8f] focus:ring-4 focus:ring-[#005d8f]/10 outline-none text-slate-700 placeholder:text-slate-400 text-sm transition-all duration-200";
 const labelClass = "block text-[11px] font-semibold text-slate-500 mb-1.5 uppercase tracking-wider";
+
+// Helper to get CSRF token
+const getCookie = (name: string) => {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+};
 
 const RelayRoomForm: React.FC<RelayRoomFormProps> = ({ onSubmit }) => {
   const { flatOfficers, flatCSIs, flatStations, designations } = useMasterData();
@@ -27,6 +43,8 @@ const RelayRoomForm: React.FC<RelayRoomFormProps> = ({ onSubmit }) => {
     location: '',
     openingTime: '',
     closingTime: '',
+    snOpening: '', // Manual Input
+    snClosing: '', // Manual Input
     openingCode: '',
     remarks: '',
   });
@@ -41,7 +59,8 @@ const RelayRoomForm: React.FC<RelayRoomFormProps> = ({ onSubmit }) => {
     return flatCSIs.map(c => c.name);
   }, [formData.sectionalOfficer, flatCSIs]);
 
-  // 2. Available Stations based on Selected CSI or Officer
+  // 2. Available Stations based on Selected CSI
+  // Requirement: "put all the stations of that csi in station/location accessed"
   const availableStations = useMemo(() => {
     if (formData.csi) {
         return flatStations.filter(s => s.parentCSI === formData.csi).map(s => s.code);
@@ -52,40 +71,81 @@ const RelayRoomForm: React.FC<RelayRoomFormProps> = ({ onSubmit }) => {
     return flatStations.map(s => s.code);
   }, [formData.sectionalOfficer, formData.csi, flatStations]);
 
-  // 3. Location (Same as Stations)
-  const allLocations = useMemo(() => flatStations.map(s => s.code), [flatStations]);
-
 
   const handleChange = (e: { target: { name: string; value: string } } | React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-     // Cascading Reset Logic
      if (name === 'sectionalOfficer') {
         setFormData(prev => ({
             ...prev,
             sectionalOfficer: value,
             csi: '',              
-            stationPosted: '' 
+            stationPosted: '',
+            location: '' 
         }));
     } else if (name === 'csi') {
         setFormData(prev => ({
             ...prev,
             csi: value,
-            stationPosted: '' 
+            stationPosted: '',
+            location: '' 
         }));
     } else {
         setFormData(prev => ({ ...prev, [name]: value }));
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+
+    // 1. Prepare Backend Payload (snake_case)
+    const apiPayload = {
+        name: formData.name,
+        designation: formData.designation,
+        station_posted: formData.stationPosted,
+        sectional_officer: formData.sectionalOfficer,
+        csi: formData.csi,
+        date: formData.date,
+        location: formData.location,
+        opening_time: formData.openingTime,
+        closing_time: formData.closingTime,
+        sn_opening: formData.snOpening,
+        sn_closing: formData.snClosing,
+        opening_code: formData.openingCode,
+        remarks: formData.remarks
+    };
+
+    // 2. Prepare Frontend Payload (camelCase)
+    const appPayload: Omit<RelayRoomLog, 'id' | 'submittedAt' | 'type'> = {
+        ...formData
+    };
     
-    // Simulate network delay
+    try {
+        const csrftoken = getCookie('csrftoken');
+        const response = await fetch('/api/forms/relay-logs/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken || '',
+            },
+            credentials: 'include',
+            body: JSON.stringify(apiPayload)
+        });
+
+        if (response.ok) {
+            console.log("✅ Relay Log saved to DB.");
+        } else {
+            console.warn("⚠️ API Error:", await response.text());
+        }
+    } catch (err) {
+        console.error("❌ Network Error:", err);
+    }
+
+    // Optimistic Update
     setTimeout(() => {
-        onSubmit(formData);
+        onSubmit(appPayload);
         setIsSubmitting(false);
-    }, 1000);
+    }, 500);
   };
 
   return (
@@ -95,12 +155,10 @@ const RelayRoomForm: React.FC<RelayRoomFormProps> = ({ onSubmit }) => {
       </Link>
 
        <div className="bg-white rounded-lg shadow-xl border border-slate-200 animate-enter delay-100 relative">
-        {/* Background Watermark */}
         <div className="absolute right-0 bottom-0 opacity-[0.03] pointer-events-none transform translate-y-10 translate-x-10 overflow-hidden rounded-lg">
             <Key className="w-96 h-96 text-teal-600" />
         </div>
 
-        {/* Official Header Strip */}
         <div className="bg-[#005d8f] text-white p-6 text-center border-b-4 border-orange-500 relative overflow-hidden rounded-t-lg">
             <div className="absolute top-0 left-0 w-full h-full opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent" />
             <h1 className="text-xl md:text-2xl font-bold uppercase tracking-wider mb-1 relative z-10">Western Railway</h1>
@@ -162,7 +220,7 @@ const RelayRoomForm: React.FC<RelayRoomFormProps> = ({ onSubmit }) => {
                   options={availableCSIs} 
                   onChange={handleChange} 
                   required 
-                  placeholder={formData.sectionalOfficer ? "Select CSI..." : "Select (All Available)"}
+                  placeholder={formData.sectionalOfficer ? "Select CSI..." : "Select Officer First"}
                 />
               </div>
 
@@ -191,31 +249,57 @@ const RelayRoomForm: React.FC<RelayRoomFormProps> = ({ onSubmit }) => {
               <span className="w-2 h-2 rounded-full bg-teal-600"></span>
               2. Access Log
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               
-              <div className="form-group lg:col-span-3">
+              <div className="form-group md:col-span-2 lg:col-span-4">
                 <label className={labelClass}>Station / Location Accessed <span className="text-red-500">*</span></label>
                 <SearchableSelect 
                   name="location" 
                   value={formData.location} 
-                  options={allLocations} // Can be anywhere, so use full list
+                  options={availableStations} 
                   onChange={handleChange} 
                   required 
-                  placeholder="Select..."
+                  placeholder={formData.csi ? "Select Station..." : "Select CSI First"}
                 />
               </div>
 
               <div className="form-group">
-                <label className={labelClass}>Opening Time <span className="text-red-500">*</span></label>
+                <label className={labelClass}>Opening Time (HH:MM) <span className="text-red-500">*</span></label>
                 <input type="time" name="openingTime" required className={inputClass} value={formData.openingTime} onChange={handleChange} />
               </div>
 
               <div className="form-group">
-                <label className={labelClass}>Closing Time <span className="text-red-500">*</span></label>
+                <label className={labelClass}>Closing Time (HH:MM) <span className="text-red-500">*</span></label>
                 <input type="time" name="closingTime" required className={inputClass} value={formData.closingTime} onChange={handleChange} />
               </div>
 
-               <div className="form-group">
+              <div className="form-group">
+                <label className={labelClass}>Opening Serial No. <span className="text-red-500">*</span></label>
+                <input 
+                    type="text" 
+                    name="snOpening" 
+                    required 
+                    className={`${inputClass} font-mono`} 
+                    value={formData.snOpening} 
+                    onChange={handleChange} 
+                    placeholder="Enter No."
+                />
+              </div>
+
+              <div className="form-group">
+                <label className={labelClass}>Closing Serial No. <span className="text-red-500">*</span></label>
+                <input 
+                    type="text" 
+                    name="snClosing" 
+                    required 
+                    className={`${inputClass} font-mono`} 
+                    value={formData.snClosing} 
+                    onChange={handleChange} 
+                    placeholder="Enter No."
+                />
+              </div>
+
+               <div className="form-group md:col-span-2 lg:col-span-2">
                 <label className={labelClass}>Code for opening <span className="text-red-500">*</span></label>
                  <div className="relative">
                     <Hash className="w-4 h-4 absolute left-3 top-3 text-slate-400 z-10" />
@@ -232,15 +316,10 @@ const RelayRoomForm: React.FC<RelayRoomFormProps> = ({ onSubmit }) => {
                   </div>
               </div>
             </div>
-            
-            <div className="mt-5 bg-amber-50 border border-amber-100 p-4 rounded-md text-xs text-amber-800 flex items-start gap-3">
-                <Info className="w-5 h-5 flex-shrink-0 text-amber-600" />
-                <p className="leading-relaxed">Opening and Closing Serial Numbers (SN) will be generated automatically by the system upon submission. You will need to record them in the physical register.</p>
-            </div>
           </div>
 
           <div className="form-group">
-             <label className={labelClass}>Remarks / Reason for Opening <span className="text-red-500">*</span></label>
+             <label className={labelClass}>Reason for opening (Remarks) <span className="text-red-500">*</span></label>
              <textarea name="remarks" required rows={3} className={inputClass} value={formData.remarks} onChange={handleChange} placeholder="Reason for accessing the relay room..."></textarea>
           </div>
 

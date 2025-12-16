@@ -1,19 +1,28 @@
 
-import type { FailureReport, RelayRoomLog, MaintenanceReport, IPSReport, OfficerNode } from './types';
+import type { FailureReport, RelayRoomLog, MaintenanceReport, IPSReport, ACFailureReport, OfficerNode } from './types';
 
 // --- Master Data Hierarchy ---
-// This structure supports the flow: Sectional Officer -> CSI -> Stations
+// Updated Structure: Officer -> CSI -> SI -> Stations
 export const OFFICER_HIERARCHY: OfficerNode[] = [
   {
     name: 'DSTE I',
     csis: [
       { 
         name: 'ADI', 
-        stations: ['ADI', 'MAN', 'VAT', 'GER', 'BJD'] 
+        sis: [
+          { name: 'ADI RRI', stations: ['ADI'] },
+          { name: 'SI VTA', stations: ['VAT', 'GER'] },
+          { name: 'SI ASV', stations: ['ASV', 'BJD'] }, // Added ASV for demo
+          { name: 'SI HMT', stations: ['HMT'] } 
+        ]
       },
       { 
         name: 'SBI', 
-        stations: ['SBI', 'KLL', 'JKA', 'KHDB', 'CLDY', 'CDK'] 
+        sis: [
+          { name: 'SI SBI', stations: ['SBI'] },
+          { name: 'SI SHB', stations: ['SHB', 'KHDB'] },
+          { name: 'SI KLL', stations: ['KLL', 'JKA', 'CLDY', 'CDK'] }
+        ]
       }
     ]
   },
@@ -22,11 +31,19 @@ export const OFFICER_HIERARCHY: OfficerNode[] = [
     csis: [
       { 
         name: 'VG', 
-        stations: ['VG', 'JTN', 'SUNR'] 
+        sis: [
+          { name: 'VG RRI', stations: ['VG'] },
+          { name: 'SI SUNR', stations: ['SUNR'] },
+          { name: 'SI JTN', stations: ['JTN'] }
+        ]
       },
       { 
         name: 'MSH', 
-        stations: ['MSH', 'UJA', 'KMLI'] 
+        sis: [
+          { name: 'MSH RRI', stations: ['MSH'] },
+          { name: 'SI UJA', stations: ['UJA'] },
+          { name: 'SI KMLI', stations: ['KMLI'] }
+        ]
       }
     ]
   },
@@ -35,7 +52,11 @@ export const OFFICER_HIERARCHY: OfficerNode[] = [
     csis: [
       { 
         name: 'GIM', 
-        stations: ['GIM', 'BCOB', 'SIOB'] 
+        sis: [
+          { name: 'SI GIM', stations: ['GIM'] },
+          { name: 'SI BCOB', stations: ['BCOB'] },
+          { name: 'SI SIOB', stations: ['SIOB'] }
+        ]
       }
     ]
   },
@@ -44,15 +65,24 @@ export const OFFICER_HIERARCHY: OfficerNode[] = [
     csis: [
       { 
         name: 'DHG', 
-        stations: ['DHG'] 
+        sis: [
+          { name: 'SI DHG', stations: ['DHG'] }
+        ]
       },
       { 
         name: 'MALB', 
-        stations: ['MALB', 'FL', 'HALV'] 
+        sis: [
+          { name: 'SI MALB', stations: ['MALB'] },
+          { name: 'SI FL', stations: ['FL'] },
+          { name: 'SI HALV', stations: ['HALV'] }
+        ]
       },
       {
         name: 'PNU',
-        stations: ['PNU', 'DISA']
+        sis: [
+          { name: 'PNU RRI', stations: ['PNU'] },
+          { name: 'SI DISA', stations: ['DISA'] }
+        ]
       }
     ]
   },
@@ -61,33 +91,32 @@ export const OFFICER_HIERARCHY: OfficerNode[] = [
     csis: [
       {
         name: 'RDHP',
-        stations: ['RDHP', 'BLDI']
+        sis: [
+          { name: 'SI RDHP', stations: ['RDHP'] },
+          { name: 'SI BLDI', stations: ['BLDI'] }
+        ]
       }
     ]
   }
 ];
 
-export const SECTIONAL_OFFICERS = [
-  'DSTE I', 
-  'DSTE II', 
-  'ADSTE ADI', 
-  'ADSTE DHG'
-];
+// Helper to get flat lists for backward compatibility or simple lookups
+// Note: These flat lists are now simple aggregations. The Context handles the intelligent lineage.
+export const SECTIONAL_OFFICERS = OFFICER_HIERARCHY.map(o => o.name);
+export const CSIS = OFFICER_HIERARCHY.flatMap(o => o.csis.map(c => c.name));
+// Flatten all SIs to get all stations
+export const STATION_CODES = OFFICER_HIERARCHY.flatMap(o => 
+  o.csis.flatMap(c => 
+    c.sis.flatMap(s => s.stations)
+  )
+);
 
-export const CSIS = [
-  'ADI', 
-  'SBI', 
-  'KLL', 
-  'PNU', 
-  'RDHP', 
-  'VG', 
-  'DHG'
-];
+// --- Other Constants ---
 
-export const DESIGNATIONS = ['CSI', 'SSE', 'JE'];
-export const STATION_CODES = ['NDLS', 'CSMT', 'HWH', 'MAS', 'BCT', 'CNB', 'LKO', 'ADI', 'SBI', 'VG', 'DHG'];
-export const ROUTES = ['A', 'B', 'D', 'D-SPL'];
-export const MAKES = ['Ravel', 'Vighnharta'];
+export const DESIGNATIONS = ['CSI', 'SSE', 'JE', 'ESM-I', 'ESM-II', 'ESM-III', 'Helper'];
+export const ROUTES = ['B', 'D', 'D-SPL', 'E'];
+export const MAKES = ['Ravel', 'Vighnharta', 'Honeywell', 'Notofire', 'Hochiki', 'Other'];
+export const DEFECTIVE_LOCATIONS = ['Relay Room', 'SM Room', 'IPS Room', 'DG Room', 'Others'];
 
 export const REASONS = [
   'Aspirating System Defective',
@@ -124,19 +153,51 @@ export const RELAY_AUTH_CODES = [
   'MISC (Specify in Remarks)'
 ];
 
+// Strict list as requested
 export const MAINTENANCE_TYPES = [
-  'Routine Check',
-  'Preventive Maintenance',
-  'Corrective Maintenance',
-  'Quarterly Inspection',
-  'Joint Inspection',
-  'Emergency Repair'
+  'Point Maintenance',
+  'Signal Maintenance',
+  'IPS/Power Supply',
+  'LC Gate Maintenance'
+];
+
+// --- Movement Form Constants ---
+export const MOVEMENT_DESIGNATIONS = ['CSI', 'SSE', 'JE'];
+
+export const MOVEMENT_REASONS = [
+  'Scheduled Inspection',
+  'Outdoor Maintenance',
+  'Indoor Maintenance',
+  'AMC Visit',
+  'Attending Failure',
+  'Post Failure Analysis or troubleshooting',
+  'System improvements like ferule, earthing, fuse related work',
+  'Joint work with engineering',
+  'JPC deficiency compliance',
+  'S&T works survey, inspection, planning related work',
+  'LED, charger or component replacement work',
+  'Joint survey, inspection with other departments',
+  'Other(Specify in remarks)'
+];
+
+export const MOVEMENT_STATIONS = [
+  'VTA', 'KKEC', 'ADI RRI', 'SBI A', 'SBIB', 'SBID', 'KHD', 'GNC', 'AJM', 'KLL', 'KADI', 'JUL', 'DNW', 'UMN', 'JDN', 'MSH', 'BHU', 'UJA', 'KMLI', 'SID', 'DRW', 'CHP', 'UM', 'PNU', 'SBI-E', 'SBI-F', 'CLDY \'A\'', 'CLDY \'B\'', 'ABD', 'GGM', 'SAU', 'CE', 'VCN', 'JKA', 'VG', 'JN', 'SADL', 'BJAN', 'JTX', 'VSV', 'HPR', 'DHG', 'GSY', 'CUL', 'SUK', 'HVD', 'DHNL', 'DVY', 'KHXB', 'WDHR', 'MALB', 'SRBR', 'KATR', 'SIOB', 'VONDH', 'BCOB', 'CHIB', 'BMSR', 'GIMC', 'GIM-B', 'GIM-A', 'SRVA', 'AI', 'AJE', 'RUT', 'KEMA', 'BHUJ', 'SUKP', 'DSLP', 'SNSR', 'MTLA', 'QTR', 'NLC', 'NLY', 'CDQ', 'CDS', 'DISA', 'LW', 'BLDI', 'JSI', 'DKW', 'DEOR', 'MITA', 'BAH', 'DVGM', 'RDHP', 'PLE', 'VRX', 'VU', 'CASA', 'SNLR', 'GM', 'PFL', 'LAA', 'AAR', 'BUBR', 'PDF', 'KYG', 'COE', 'SIA', 'LKZ', 'LCH', 'JTN', 'KTRD', 'DTJ', 'BKD', 'JKS', 'DHJ', 'RUJ', 'PTN', 'KHPR', 'KASA', 'WAAD', 'SIHI', 'ASV', 'NRD', 'DBO', 'NHM', 'RKH', 'TOD', 'PRJ', 'SNSN', 'HMT', 'VNG', 'VDG', 'KRU', 'VTDI', 'BHRJ', 'CSMA', 'IDAR', 'KDBM', 'VJF', 'Division office', 'Other'
+];
+
+export const MOVEMENT_POSTING_CODES = [
+  'VTA', 'ADI RRI', 'ASV', 'NHM', 'HMT', 'SHB', 'SBI', 'CLDY', 'SAU', 'CE', 
+  'JKA', 'VG', 'JTX', 'DHG', 'HVD', 'MALB', 'GNC', 'KHD', 'KLL', 'UMN', 
+  'MSH Store', 'PTN', 'MSH(N)', 'VDG', 'SID', 'UJA', 'KTRD', 'PNU', 'DISA', 
+  'DEOR', 'BLDI', 'RDHP', 'AAR', 'SIOB BR', 'SIOB Main', 'KYG', 'GIM', 'BHUJ', 
+  'AI', 'NLY'
+];
+
+export const JPC_STATIONS = [
+    "VATVA", "KANKARIA", "ADI SEC A", "ADI SEC B", "ADI SEC C", "ADI SEC D", "SBI A", "SBIA NZ", "SBI B", "SBI D", "KHD", "GNC", "AJM", "KLL", "JUL", "DNW", "UMN", "JDN", "MSH", "BHU", "UJA", "KMLI", "SID", "DRW", "CHP", "UM", "PNU", "SBT E", "SBT F", "CLDYA", "CLDYB", "ABD", "GGM", "SAU", "CE", "VCN", "JKA", "VIRAMGAM", "JN", "SADL", "BAJN", "JTX", "VSV", "DHG", "GSY", "CUL", "SUK", "HVD", "DHNL", "DVY", "KHXB", "WDHR", "MALB", "SRBR", "KATR", "SIOB", "VOND", "BCOB", "CHIB", "BMSR", "GIMC", "GIMB", "GIMA", "AI", "AJE", "RUT", "KEMA", "BHUJ", "SHIRVA", "LCH", "JTN", "KTRD", "DTJ", "BKD", "JKS", "CDQ", "CDS", "DISA", "LW", "BHILDI", "JSI", "DKW", "DEOR", "MITA", "BAH", "DVGM", "RDHP", "PLE", "VRX", "VU", "CASA", "SNLR", "GM", "PFL", "LAA", "AAR", "BUBR", "PDF", "KYG", "COE", "SIA", "LKZ", "DHJ", "RUJ", "PTN", "KHPR", "KASA", "WAAD", "SIHI", "ASV", "NRD", "DBO", "NHM", "RKH", "TOD", "PRJ", "SNSN", "HMT", "VNG", "VDG", "KRU", "VTDI", "SUKP", "DSLP", "SNSR", "MTLA", "QTR", "NLC", "NLY", "KADI", "IDAR", "KDBM", "VJF", "BHRJ", "CSMA"
 ];
 
 // IPS Constants
-export const IPS_CSIS = [
-  'SBI', 'SIOB', 'VG', 'BR-MSH', 'RDHP', 'GIM', 'PNU', 'ADI', 'N-MSH', 'MALB', 'DHG', 'KLL'
-];
+export const IPS_CSIS = CSIS; 
 
 export const IPS_MODULES = [
   'SMR',
@@ -148,7 +209,6 @@ export const IPS_MODULES = [
   'SM Status Monitoring Panel'
 ];
 
-// Updated to match Excel Template exactly
 export const IPS_COMPANIES = [
   'AMARARAJA',
   'HBL',
@@ -197,46 +257,6 @@ export const MOCK_FAILURES: FailureReport[] = [
     warranty: 'Yes',
     status: 'Open',
     submittedAt: new Date().toISOString()
-  },
-  {
-    id: '1003',
-    type: 'failure',
-    name: 'Amit Patel',
-    date: '2023-10-18',
-    sectionalOfficer: 'DSTE II',
-    csi: 'VG',
-    designation: 'SSE',
-    postingStationCode: 'VG',
-    toLocation: 'VG',
-    route: 'D-SPL',
-    make: 'Ravel',
-    failureDateTime: '2023-10-17T22:00',
-    reason: ['Battery Wiring Fault'],
-    remarks: 'Rat bite on main loop cable.',
-    amc: 'Yes',
-    warranty: 'No',
-    status: 'Open',
-    submittedAt: new Date().toISOString()
-  },
-  {
-    id: '1004',
-    type: 'failure',
-    name: 'Suresh Raina',
-    date: '2023-10-20',
-    sectionalOfficer: 'ADSTE DHG',
-    csi: 'DHG',
-    designation: 'JE',
-    postingStationCode: 'DHG',
-    toLocation: 'DHG',
-    route: 'A',
-    make: 'Ravel',
-    failureDateTime: '2023-10-20T08:00',
-    reason: ['SMPS Defective', 'System Software Defective'],
-    remarks: '',
-    amc: 'Yes',
-    warranty: 'No',
-    status: 'Resolved',
-    submittedAt: new Date().toISOString()
   }
 ];
 
@@ -283,31 +303,27 @@ export const MOCK_MAINTENANCE_LOGS: MaintenanceReport[] = [
   {
     id: '7001',
     type: 'maintenance',
-    name: 'Manoj Tiwari',
-    designation: 'JE',
-    stationPosted: 'PNU',
     sectionalOfficer: 'ADSTE DHG',
     csi: 'PNU',
     date: '2023-10-28',
-    stationMaintained: 'PNU',
-    maintenanceType: 'Routine Check',
-    workDescription: 'Checked all smoke detectors in Control Room. Cleaning done.',
+    maintenanceType: 'Signal Maintenance',
+    section: 'PNU-DISA',
+    assetNumbers: 'S-22, S-24',
+    workDescription: 'Visibility check and lens cleaning.',
     remarks: 'All working fine.',
     submittedAt: new Date().toISOString()
   },
   {
     id: '7002',
     type: 'maintenance',
-    name: 'Kishan Lal',
-    designation: 'SSE',
-    stationPosted: 'ADI',
     sectionalOfficer: 'DSTE I',
     csi: 'ADI',
     date: '2023-10-29',
-    stationMaintained: 'ADI',
-    maintenanceType: 'Preventive Maintenance',
-    workDescription: 'Quarterly maintenance of Ravel Panel. Battery voltage checked.',
-    remarks: 'Battery replacement recommended in next visit.',
+    maintenanceType: 'Point Maintenance',
+    assetNumbers: 'Pt-101, Pt-102, Pt-103, Pt-104, Pt-105',
+    section: 'ADI-GER',
+    workDescription: 'Points cleaning and lubrication.',
+    remarks: 'Points checked and lubricated.',
     submittedAt: new Date().toISOString()
   }
 ];
@@ -331,16 +347,28 @@ export const MOCK_IPS_REPORTS: IPSReport[] = [
         qtySpare: 0,
         qtySpareAMC: 2,
         qtyDefectiveAMC: 0
-      },
-       {
-        id: 'e2',
-        moduleType: 'SMR',
-        company: 'HBL',
-        qtyDefective: 0,
-        qtySpare: 1,
-        qtySpareAMC: 5,
-        qtyDefectiveAMC: 1
       }
     ]
+  }
+];
+
+export const MOCK_AC_REPORTS: ACFailureReport[] = [
+  {
+    id: '9001',
+    type: 'ac',
+    name: 'Vikram Sarabhai',
+    designation: 'JE',
+    sectionalOfficer: 'DSTE I',
+    csi: 'ADI',
+    date: '2023-11-01',
+    locationCode: 'ADI',
+    totalACUnits: 4,
+    acType: 'Split',
+    totalFailCount: '1',
+    failureDateTime: '2023-11-01T10:00',
+    underWarranty: 'No',
+    underAMC: 'Yes',
+    remarks: 'Compressor faulty.',
+    submittedAt: new Date().toISOString()
   }
 ];
