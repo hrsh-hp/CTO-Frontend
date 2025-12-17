@@ -107,16 +107,15 @@ export const CSIS = OFFICER_HIERARCHY.flatMap(o => o.csis.map(c => c.name));
 // Flatten all SIs to get all stations
 export const STATION_CODES = OFFICER_HIERARCHY.flatMap(o => 
   o.csis.flatMap(c => 
-    c.sis.flatMap(s => s.stations)
+    (c.sis || []).flatMap(s => s.stations.map(st => typeof st === 'string' ? st : st.code))
   )
 );
 
 // --- Other Constants ---
 
 export const DESIGNATIONS = ['CSI', 'SSE', 'JE', 'ESM-I', 'ESM-II', 'ESM-III', 'Helper'];
-export const ROUTES = ['B', 'D', 'D-SPL', 'E'];
-export const MAKES = ['Ravel', 'Vighnharta', 'Honeywell', 'Notofire', 'Hochiki', 'Other'];
-export const DEFECTIVE_LOCATIONS = ['Relay Room', 'SM Room', 'IPS Room', 'DG Room', 'Others'];
+export const ROUTES = ['A', 'B', 'D', 'D-SPL'];
+export const MAKES = ['Ravel', 'Vighnharta'];
 
 export const REASONS = [
   'Aspirating System Defective',
@@ -184,16 +183,8 @@ export const MOVEMENT_STATIONS = [
   'VTA', 'KKEC', 'ADI RRI', 'SBI A', 'SBIB', 'SBID', 'KHD', 'GNC', 'AJM', 'KLL', 'KADI', 'JUL', 'DNW', 'UMN', 'JDN', 'MSH', 'BHU', 'UJA', 'KMLI', 'SID', 'DRW', 'CHP', 'UM', 'PNU', 'SBI-E', 'SBI-F', 'CLDY \'A\'', 'CLDY \'B\'', 'ABD', 'GGM', 'SAU', 'CE', 'VCN', 'JKA', 'VG', 'JN', 'SADL', 'BJAN', 'JTX', 'VSV', 'HPR', 'DHG', 'GSY', 'CUL', 'SUK', 'HVD', 'DHNL', 'DVY', 'KHXB', 'WDHR', 'MALB', 'SRBR', 'KATR', 'SIOB', 'VONDH', 'BCOB', 'CHIB', 'BMSR', 'GIMC', 'GIM-B', 'GIM-A', 'SRVA', 'AI', 'AJE', 'RUT', 'KEMA', 'BHUJ', 'SUKP', 'DSLP', 'SNSR', 'MTLA', 'QTR', 'NLC', 'NLY', 'CDQ', 'CDS', 'DISA', 'LW', 'BLDI', 'JSI', 'DKW', 'DEOR', 'MITA', 'BAH', 'DVGM', 'RDHP', 'PLE', 'VRX', 'VU', 'CASA', 'SNLR', 'GM', 'PFL', 'LAA', 'AAR', 'BUBR', 'PDF', 'KYG', 'COE', 'SIA', 'LKZ', 'LCH', 'JTN', 'KTRD', 'DTJ', 'BKD', 'JKS', 'DHJ', 'RUJ', 'PTN', 'KHPR', 'KASA', 'WAAD', 'SIHI', 'ASV', 'NRD', 'DBO', 'NHM', 'RKH', 'TOD', 'PRJ', 'SNSN', 'HMT', 'VNG', 'VDG', 'KRU', 'VTDI', 'BHRJ', 'CSMA', 'IDAR', 'KDBM', 'VJF', 'Division office', 'Other'
 ];
 
-export const MOVEMENT_POSTING_CODES = [
-  'VTA', 'ADI RRI', 'ASV', 'NHM', 'HMT', 'SHB', 'SBI', 'CLDY', 'SAU', 'CE', 
-  'JKA', 'VG', 'JTX', 'DHG', 'HVD', 'MALB', 'GNC', 'KHD', 'KLL', 'UMN', 
-  'MSH Store', 'PTN', 'MSH(N)', 'VDG', 'SID', 'UJA', 'KTRD', 'PNU', 'DISA', 
-  'DEOR', 'BLDI', 'RDHP', 'AAR', 'SIOB BR', 'SIOB Main', 'KYG', 'GIM', 'BHUJ', 
-  'AI', 'NLY'
-];
-
 export const JPC_STATIONS = [
-    "VATVA", "KANKARIA", "ADI SEC A", "ADI SEC B", "ADI SEC C", "ADI SEC D", "SBI A", "SBIA NZ", "SBI B", "SBI D", "KHD", "GNC", "AJM", "KLL", "JUL", "DNW", "UMN", "JDN", "MSH", "BHU", "UJA", "KMLI", "SID", "DRW", "CHP", "UM", "PNU", "SBT E", "SBT F", "CLDYA", "CLDYB", "ABD", "GGM", "SAU", "CE", "VCN", "JKA", "VIRAMGAM", "JN", "SADL", "BAJN", "JTX", "VSV", "DHG", "GSY", "CUL", "SUK", "HVD", "DHNL", "DVY", "KHXB", "WDHR", "MALB", "SRBR", "KATR", "SIOB", "VOND", "BCOB", "CHIB", "BMSR", "GIMC", "GIMB", "GIMA", "AI", "AJE", "RUT", "KEMA", "BHUJ", "SHIRVA", "LCH", "JTN", "KTRD", "DTJ", "BKD", "JKS", "CDQ", "CDS", "DISA", "LW", "BHILDI", "JSI", "DKW", "DEOR", "MITA", "BAH", "DVGM", "RDHP", "PLE", "VRX", "VU", "CASA", "SNLR", "GM", "PFL", "LAA", "AAR", "BUBR", "PDF", "KYG", "COE", "SIA", "LKZ", "DHJ", "RUJ", "PTN", "KHPR", "KASA", "WAAD", "SIHI", "ASV", "NRD", "DBO", "NHM", "RKH", "TOD", "PRJ", "SNSN", "HMT", "VNG", "VDG", "KRU", "VTDI", "SUKP", "DSLP", "SNSR", "MTLA", "QTR", "NLC", "NLY", "KADI", "IDAR", "KDBM", "VJF", "BHRJ", "CSMA"
+    "VATVA", "KANKARIA", "ADISECA", "ADISECB", "ADISECC", "ADISECD", "SBIA", "SBIANZ", "SBIB", "SBID", "KHD", "GNC", "AJM", "KLL", "JUL", "DNW", "UMN", "JDN", "MSH", "BHU", "UJA", "KMLI", "SID", "DRW", "CHP", "UM", "PNU", "SBTE", "SBTF", "CLDYA", "CLDYB", "ABD", "GGM", "SAU", "CE", "VCN", "JKA", "VIRAMGAM", "JN", "SADL", "BAJN", "JTX", "VSV", "DHG", "GSY", "CUL", "SUK", "HVD", "DHNL", "DVY", "KHXB", "WDHR", "MALB", "SRBR", "KATR", "SIOB", "VOND", "BCOB", "CHIB", "BMSR", "GIMC", "GIMB", "GIMA", "AI", "AJE", "RUT", "KEMA", "BHUJ", "SHIRVA", "LCH", "JTN", "KTRD", "DTJ", "BKD", "JKS", "CDQ", "CDS", "DISA", "LW", "BHILDI", "JSI", "DKW", "DEOR", "MITA", "BAH", "DVGM", "RDHP", "PLE", "VRX", "VU", "CASA", "SNLR", "GM", "PFL", "LAA", "AAR", "BUBR", "PDF", "KYG", "COE", "SIA", "LKZ", "DHJ", "RUJ", "PTN", "KHPR", "KASA", "WAAD", "SIHI", "ASV", "NRD", "DBO", "NHM", "RKH", "TOD", "PRJ", "SNSN", "HMT", "VNG", "VDG", "KRU", "VTDI", "SUKP", "DSLP", "SNSR", "MTLA", "QTR", "NLC", "NLY", "KADI", "IDAR", "KDBM", "VJF", "BHRJ", "CSMA"
 ];
 
 // IPS Constants
@@ -303,6 +294,9 @@ export const MOCK_MAINTENANCE_LOGS: MaintenanceReport[] = [
   {
     id: '7001',
     type: 'maintenance',
+    name: 'Suresh Patel',
+    designation: 'ESM-I',
+    stationPosted: 'PNU',
     sectionalOfficer: 'ADSTE DHG',
     csi: 'PNU',
     date: '2023-10-28',
@@ -316,6 +310,9 @@ export const MOCK_MAINTENANCE_LOGS: MaintenanceReport[] = [
   {
     id: '7002',
     type: 'maintenance',
+    name: 'Amit Shah',
+    designation: 'ESM-II',
+    stationPosted: 'ADI',
     sectionalOfficer: 'DSTE I',
     csi: 'ADI',
     date: '2023-10-29',

@@ -127,7 +127,7 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
         if (filters.dateRangeStart && r.date < filters.dateRangeStart) return false;
         if (filters.dateRangeEnd && r.date > filters.dateRangeEnd) return false;
         return true;
-    });
+      });
   }, [acReports, filters]);
 
   const filteredMovementReports = useMemo(() => {
@@ -384,14 +384,14 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
       </div>
       
       {/* Tab Selection */}
-      <div className="flex justify-center mb-6 overflow-x-auto animate-enter delay-100">
+      <div className="flex justify-start md:justify-center mb-6 overflow-x-auto animate-enter delay-100 pb-2">
         <div className="bg-white p-1 rounded border border-slate-300 inline-flex whitespace-nowrap shadow-sm">
           <button 
             onClick={() => setActiveTab('failures')}
             className={`flex items-center gap-2 px-5 py-2 rounded text-sm font-medium transition-all duration-300 ${activeTab === 'failures' ? 'bg-[#005d8f] text-white shadow' : 'text-slate-600 hover:bg-slate-50'}`}
           >
             <AlertCircle className="w-4 h-4" />
-            Failures
+            Fire Alarm
           </button>
           <button 
              onClick={() => setActiveTab('relay')}

@@ -1,9 +1,11 @@
 
 import React, { useState, useMemo } from 'react';
-import { ROUTES, DEFECTIVE_LOCATIONS } from '../constants';
-import { useMasterData } from '../contexts/MasterDataContext';
-import type { FailureReport } from '../types';
-import { Send, Save, CheckSquare, Square, ArrowLeft, Loader2, Activity } from 'lucide-react';
+import { 
+  SECTIONAL_OFFICERS, DESIGNATIONS, STATION_CODES, 
+  ROUTES, MAKES, REASONS, OFFICER_HIERARCHY 
+} from '../constants';
+import type { FailureReport, StationNode } from '../types';
+import { Send, Save, CheckSquare, Square, ArrowLeft, Loader2, Activity, Clock, CalendarDays, CheckCircle, AlertTriangle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import SearchableSelect from './SearchableSelect';
 
@@ -31,19 +33,9 @@ const getCookie = (name: string) => {
 };
 
 const ReportForm: React.FC<ReportFormProps> = ({ onSubmit }) => {
-  const { 
-    flatOfficers, 
-    flatOfficersList,
-    flatCSIs, 
-    flatStations,
-    designations, 
-    makes,        
-    reasons,
-    rawMakes,
-    rawReasons
-  } = useMasterData();
-
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [reportType, setReportType] = useState<'failure' | 'healthy'>('failure');
+
   const [formData, setFormData] = useState({
     name: '',
     date: new Date().toISOString().split('T')[0],
@@ -53,9 +45,10 @@ const ReportForm: React.FC<ReportFormProps> = ({ onSubmit }) => {
     postingStationCode: '',
     toLocation: '',
     route: '',
-    make: '',
-    defectiveAt: '',
-    failureDateTime: '',
+    make: 'Ravel' as 'Ravel' | 'Vighnharta',
+    // Split Date/Time for better control
+    failureDatePart: '',
+    failureTimePart: '',
     reason: [] as string[],
     remarks: '',
     amc: 'No' as 'Yes' | 'No',
@@ -64,44 +57,35 @@ const ReportForm: React.FC<ReportFormProps> = ({ onSubmit }) => {
 
   // --- Dynamic Dropdown Logic ---
   
-  // 1. Available CSIs
-  // If Officer selected -> Filter CSIs by Officer
-  // If NO Officer selected -> Show ALL CSIs
+  // 1. Available CSIs based on Selected Officer
   const availableCSIs = useMemo(() => {
-    if (formData.sectionalOfficer) {
-      return flatCSIs
-        .filter(c => c.parentOfficer === formData.sectionalOfficer)
-        .map(c => c.name);
-    }
-    return flatCSIs.map(c => c.name);
-  }, [formData.sectionalOfficer, flatCSIs]);
+    if (!formData.sectionalOfficer) return [];
+    const officerNode = OFFICER_HIERARCHY.find(o => o.name === formData.sectionalOfficer);
+    return officerNode ? officerNode.csis.map(c => c.name) : [];
+  }, [formData.sectionalOfficer]);
 
-  // 2. Available Stations
-  // If CSI selected -> Filter by CSI
-  // If Officer selected (but no CSI) -> Filter by Officer
-  // If NOTHING selected -> Show ALL Stations
+  // 2. Available Stations based on Selected CSI
   const availableStations = useMemo(() => {
-    let stations: string[] = [];
-    if (formData.csi) {
-      stations = flatStations
-        .filter(s => s.parentCSI === formData.csi)
-        .map(s => s.code);
-    } else if (formData.sectionalOfficer) {
-      stations = flatStations
-        .filter(s => s.parentOfficer === formData.sectionalOfficer)
-        .map(s => s.code);
+    if (!formData.csi) return [];
+    let stations: (string | StationNode)[] = [];
+    if (formData.sectionalOfficer) {
+        const officerNode = OFFICER_HIERARCHY.find(o => o.name === formData.sectionalOfficer);
+        const csiNode = officerNode?.csis.find(c => c.name === formData.csi);
+        if (csiNode && csiNode.sis) {
+            stations = csiNode.sis.flatMap(s => s.stations);
+        }
     } else {
-      stations = flatStations.map(s => s.code);
+        for (const officer of OFFICER_HIERARCHY) {
+            const csiNode = officer.csis.find(c => c.name === formData.csi);
+            if (csiNode && csiNode.sis) {
+                stations = csiNode.sis.flatMap(s => s.stations);
+                break; // Found the CSI, stop searching
+            }
+        }
     }
-    return Array.from(new Set(stations));
-  }, [formData.sectionalOfficer, formData.csi, flatStations]);
-
-  // 3. To Location (Affected Location) - Usually same logic as Available Stations
-  // Use a fallback just in case flatStations is empty initially (should resolve with context)
-  const allLocationCodes = useMemo(() => {
-    const codes = flatStations.length > 0 ? flatStations.map(s => s.code) : [];
-    return Array.from(new Set(codes));
-  }, [flatStations]);
+    // Map to strings
+    return stations.map(s => (typeof s === 'string' ? s : s.code));
+  }, [formData.sectionalOfficer, formData.csi]);
 
 
   const handleChange = (e: { target: { name: string; value: string } } | React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -112,14 +96,14 @@ const ReportForm: React.FC<ReportFormProps> = ({ onSubmit }) => {
         setFormData(prev => ({
             ...prev,
             sectionalOfficer: value,
-            csi: '',              // Reset CSI
-            postingStationCode: '' // Reset Station
+            csi: '',              
+            postingStationCode: '' 
         }));
     } else if (name === 'csi') {
         setFormData(prev => ({
             ...prev,
             csi: value,
-            postingStationCode: '' // Reset Station
+            postingStationCode: '' 
         }));
     } else {
         setFormData(prev => ({ ...prev, [name]: value }));
@@ -139,43 +123,64 @@ const ReportForm: React.FC<ReportFormProps> = ({ onSubmit }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.reason.length === 0) {
-      alert("Please select at least one reason for failure.");
-      return;
-    }
     
+    // Strict validation only if reporting a failure
+    if (reportType === 'failure') {
+        if (formData.reason.length === 0) {
+            alert("Please select at least one reason for failure.");
+            return;
+        }
+        if (!formData.failureDatePart || !formData.failureTimePart) {
+            alert("Please enter both Failure Date and Time.");
+            return;
+        }
+        if (!formData.toLocation) {
+            alert("Please select the Affected Location.");
+            return;
+        }
+    }
+
     setIsSubmitting(true);
 
-    // Lookup IDs
-    const officerId = flatOfficersList.find(o => o.name === formData.sectionalOfficer)?.id;
-    const csiId = flatCSIs.find(c => c.name === formData.csi)?.id;
-    const stationId = flatStations.find(s => s.code === formData.postingStationCode)?.id;
-    const locationId = flatStations.find(s => s.code === formData.toLocation)?.id;
-    const makeId = rawMakes.find(m => m.name === formData.make)?.id;
-    const reasonIds = formData.reason.map(rText => rawReasons.find(r => r.text === rText)?.id).filter(id => id !== undefined);
+    // Prepare payload based on report type
+    // If healthy, we use reporting date as timestamp and 'System Working' as reason
+    const combinedDateTime = reportType === 'failure' 
+        ? `${formData.failureDatePart}T${formData.failureTimePart}`
+        : `${formData.date}T00:00`;
 
-    // 1. Backend Payload (snake_case)
+    const finalReasons = reportType === 'failure' 
+        ? formData.reason 
+        : ['System Working'];
+
+    // If healthy, location defaults to posted station
+    const finalLocation = reportType === 'failure'
+        ? formData.toLocation
+        : formData.postingStationCode;
+
+    // 1. Backend Payload
     const apiPayload = {
-      reporter_name: formData.name,
-      report_date: formData.date,
-      sectional_officer: officerId,
-      csi_unit: csiId,
-      designation: formData.designation, // Assuming string is fine, or need ID?
-      posting_station: stationId,
-      affected_location: locationId,
+      name: formData.name,
+      date: formData.date,
+      sectional_officer: formData.sectionalOfficer,
+      csi: formData.csi,
+      designation: formData.designation,
+      posting_station_code: formData.postingStationCode,
+      to_location: finalLocation,
       route: formData.route,
-      make: makeId,
-      defective_at: formData.defectiveAt,
-      failure_datetime: formData.failureDateTime,
-      reasons: reasonIds, 
+      make: formData.make,
+      failure_date_time: combinedDateTime,
+      reason: finalReasons,
       remarks: formData.remarks,
       amc: formData.amc,
       warranty: formData.warranty,
     };
 
-    // 2. Frontend Payload (camelCase)
+    // 2. Frontend Payload
     const appPayload = {
-        ...formData
+        ...formData,
+        reason: finalReasons,
+        toLocation: finalLocation,
+        failureDateTime: combinedDateTime
     };
     
     try {
@@ -199,7 +204,6 @@ const ReportForm: React.FC<ReportFormProps> = ({ onSubmit }) => {
         console.error("❌ Network Error:", err);
     }
 
-    // Optimistic Update
     setTimeout(() => {
         onSubmit(appPayload);
         setIsSubmitting(false);
@@ -253,7 +257,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ onSubmit }) => {
                 <SearchableSelect 
                   name="designation" 
                   value={formData.designation} 
-                  options={designations} 
+                  options={DESIGNATIONS} 
                   onChange={handleChange} 
                   required 
                   placeholder="Select..."
@@ -266,7 +270,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ onSubmit }) => {
                 <SearchableSelect 
                   name="sectionalOfficer" 
                   value={formData.sectionalOfficer} 
-                  options={flatOfficers} 
+                  options={SECTIONAL_OFFICERS} 
                   onChange={handleChange} 
                   required 
                   placeholder="Select Officer..."
@@ -281,7 +285,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ onSubmit }) => {
                   options={availableCSIs} 
                   onChange={handleChange} 
                   required 
-                  placeholder={formData.sectionalOfficer ? "Select CSI..." : "Select (All Available)"}
+                  placeholder={formData.sectionalOfficer ? "Select CSI..." : "Select Officer First"}
                 />
               </div>
 
@@ -293,7 +297,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ onSubmit }) => {
                   options={availableStations} 
                   onChange={handleChange} 
                   required 
-                  placeholder={formData.csi ? "Select Station..." : "Select (All Available)"}
+                  placeholder={formData.csi ? "Select Station..." : "Select CSI First"}
                 />
               </div>
               {/* HIERARCHY END */}
@@ -305,24 +309,49 @@ const ReportForm: React.FC<ReportFormProps> = ({ onSubmit }) => {
             </div>
           </div>
 
-          {/* Section 2: Failure Details */}
+          {/* Section 2: System Status */}
            <div className="border border-slate-100 rounded-lg p-6 bg-slate-50/50 hover:bg-slate-50 transition-colors">
             <h3 className="text-xs font-bold text-red-600 border-b border-slate-200 pb-2 mb-6 uppercase tracking-wide flex items-center gap-2">
                <div className="w-2 h-2 rounded-full bg-red-600 signal-live"></div>
-              2. Defect / Failure Details
+              2. System Status & Details
             </h3>
+
+            {/* STATUS TOGGLE */}
+            <div className="flex flex-col sm:flex-row gap-4 mb-8">
+                <button 
+                    type="button"
+                    onClick={() => setReportType('failure')}
+                    className={`flex-1 py-3 px-4 rounded-lg border-2 flex items-center justify-center gap-2 transition-all shadow-sm ${reportType === 'failure' ? 'border-red-500 bg-red-50 text-red-700 font-bold scale-[1.02]' : 'border-slate-200 text-slate-500 hover:border-slate-300 bg-white'}`}
+                >
+                    <AlertTriangle className={`w-5 h-5 ${reportType === 'failure' ? 'fill-red-100' : ''}`} />
+                    Report Defect / Failure
+                </button>
+                <button 
+                    type="button"
+                    onClick={() => setReportType('healthy')}
+                    className={`flex-1 py-3 px-4 rounded-lg border-2 flex items-center justify-center gap-2 transition-all shadow-sm ${reportType === 'healthy' ? 'border-green-500 bg-green-50 text-green-700 font-bold scale-[1.02]' : 'border-slate-200 text-slate-500 hover:border-slate-300 bg-white'}`}
+                >
+                    <CheckCircle className={`w-5 h-5 ${reportType === 'healthy' ? 'fill-green-100' : ''}`} />
+                    System Healthy (Position OK)
+                </button>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-               <div className="form-group">
-                <label className={labelClass}>Affected Location <span className="text-red-500">*</span></label>
-                <SearchableSelect 
-                  name="toLocation" 
-                  value={formData.toLocation} 
-                  options={allLocationCodes} 
-                  onChange={handleChange} 
-                  required 
-                  placeholder="Select..."
-                />
-              </div>
+               
+               {/* Conditional Inputs */}
+               {reportType === 'failure' && (
+                   <div className="form-group animate-enter">
+                    <label className={labelClass}>Affected Location <span className="text-red-500">*</span></label>
+                    <SearchableSelect 
+                        name="toLocation" 
+                        value={formData.toLocation} 
+                        options={STATION_CODES} 
+                        onChange={handleChange} 
+                        required 
+                        placeholder="Select..."
+                    />
+                   </div>
+               )}
 
                <div className="form-group">
                 <label className={labelClass}>Route <span className="text-red-500">*</span></label>
@@ -341,48 +370,66 @@ const ReportForm: React.FC<ReportFormProps> = ({ onSubmit }) => {
                 <SearchableSelect 
                   name="make" 
                   value={formData.make} 
-                  options={makes} 
+                  options={MAKES} 
                   onChange={handleChange} 
                   required 
                   placeholder="Select..."
                 />
               </div>
 
-              <div className="form-group">
-                <label className={labelClass}>Defective at (Location) <span className="text-red-500">*</span></label>
-                <SearchableSelect 
-                  name="defectiveAt" 
-                  value={formData.defectiveAt} 
-                  options={DEFECTIVE_LOCATIONS} 
-                  onChange={handleChange} 
-                  required 
-                  placeholder="Select..."
-                />
-              </div>
+              {/* Conditional Date & Time Inputs */}
+              {reportType === 'failure' && (
+                  <>
+                    <div className="form-group animate-enter">
+                        <label className={labelClass}>Failure Date <span className="text-red-500">*</span></label>
+                        <div className="relative">
+                            <CalendarDays className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                            <input 
+                                type="date" 
+                                name="failureDatePart" 
+                                required 
+                                className={`${inputClass} pl-10`} 
+                                value={formData.failureDatePart} 
+                                onChange={handleChange} 
+                            />
+                        </div>
+                    </div>
 
-              <div className="form-group">
-                <label className={labelClass}>Failure Date & Time <span className="text-red-500">*</span></label>
-                <input type="datetime-local" name="failureDateTime" required className={inputClass} value={formData.failureDateTime} onChange={handleChange} step="60" />
-              </div>
+                    <div className="form-group animate-enter">
+                        <label className={labelClass}>Failure Time (HH:MM) <span className="text-red-500">*</span></label>
+                        <div className="relative">
+                            <Clock className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                            <input 
+                                type="time" 
+                                name="failureTimePart" 
+                                required 
+                                className={`${inputClass} pl-10`} 
+                                value={formData.failureTimePart} 
+                                onChange={handleChange} 
+                            />
+                        </div>
+                    </div>
 
-              <div className="form-group md:col-span-2">
-                <label className={labelClass}>Reason for Failure (Check all that apply) <span className="text-red-500">*</span></label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-                  {reasons.map(r => {
-                    const isSelected = formData.reason.includes(r);
-                    return (
-                      <div 
-                        key={r} 
-                        onClick={() => handleReasonToggle(r)}
-                        className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-all duration-200 ${isSelected ? 'bg-red-50 border-red-200 shadow-sm transform scale-[1.01]' : 'bg-white border-slate-200 hover:border-[#005d8f] hover:bg-slate-50'}`}
-                      >
-                        {isSelected ? <CheckSquare className="w-5 h-5 text-red-600 flex-shrink-0" /> : <Square className="w-5 h-5 text-slate-300 flex-shrink-0" />}
-                        <span className={`text-sm ${isSelected ? 'text-red-900 font-medium' : 'text-slate-600'}`}>{r}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+                    <div className="form-group md:col-span-2 animate-enter">
+                        <label className={labelClass}>Reason for Failure (Check all that apply) <span className="text-red-500">*</span></label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                        {REASONS.map(r => {
+                            const isSelected = formData.reason.includes(r);
+                            return (
+                            <div 
+                                key={r} 
+                                onClick={() => handleReasonToggle(r)}
+                                className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-all duration-200 ${isSelected ? 'bg-red-50 border-red-200 shadow-sm transform scale-[1.01]' : 'bg-white border-slate-200 hover:border-[#005d8f] hover:bg-slate-50'}`}
+                            >
+                                {isSelected ? <CheckSquare className="w-5 h-5 text-red-600 flex-shrink-0" /> : <Square className="w-5 h-5 text-slate-300 flex-shrink-0" />}
+                                <span className={`text-sm ${isSelected ? 'text-red-900 font-medium' : 'text-slate-600'}`}>{r}</span>
+                            </div>
+                            );
+                        })}
+                        </div>
+                    </div>
+                  </>
+              )}
 
               <div className="form-group md:col-span-2">
                 <label className={labelClass}>Remarks / Description</label>
@@ -429,7 +476,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ onSubmit }) => {
               ) : (
                   <>
                     <Save className="w-5 h-5" />
-                    Submit Failure Report
+                    Submit {reportType === 'failure' ? 'Failure' : 'Position'} Report
                   </>
               )}
             </button>

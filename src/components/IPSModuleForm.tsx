@@ -89,7 +89,7 @@ const IPSModuleForm: React.FC<IPSFormProps> = ({ onSubmit }) => {
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const dateStr = e.target.value;
     const date = new Date(dateStr);
-    if (date.getDay() !== 1) {
+    if (date.getUTCDay() !== 1) {
       alert("Submission Date must be a Monday.");
       setSubmissionDate('');
       setWeekFrom('');
@@ -416,7 +416,7 @@ const IPSModuleForm: React.FC<IPSFormProps> = ({ onSubmit }) => {
                             </tr>
                         </thead>
                         <tbody>
-                            {ipsModules.map((module, rowIndex) => {
+                            {ipsModules.map((module) => {
                                 const rowTotal = getRowTotal(module);
                                 return (
                                     <tr key={module} className="border-b border-slate-200 hover:bg-yellow-50">

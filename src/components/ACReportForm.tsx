@@ -101,6 +101,14 @@ const ACReportForm: React.FC<ACFormProps> = ({ onSubmit }) => {
             csi: '',              
             locationCode: '' 
         }));
+    } else if (name === 'date') {
+        const date = new Date(value);
+        if (date.getUTCDay() !== 1) {
+            alert("Please select a Monday for the Weekly Report.");
+            setFormData(prev => ({ ...prev, date: '' }));
+            return;
+        }
+        setFormData(prev => ({ ...prev, [name]: value }));
     } else if (name === 'csi') {
         setFormData(prev => ({
             ...prev,
@@ -114,7 +122,14 @@ const ACReportForm: React.FC<ACFormProps> = ({ onSubmit }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.designation || !formData.locationCode || !formData.failureDateTime) {
+    const isZeroFailures = formData.totalFailCount === '0';
+
+    if (!formData.name || !formData.designation || !formData.locationCode) {
+        alert("Please fill in all mandatory fields.");
+        return;
+    }
+
+    if (!isZeroFailures && !formData.failureDateTime) {
         alert("Please fill in all mandatory fields.");
         return;
     }
@@ -137,7 +152,7 @@ const ACReportForm: React.FC<ACFormProps> = ({ onSubmit }) => {
         total_ac_units: parseInt(formData.totalACUnits) || 0,
         ac_type: formData.acType,
         total_fail_count: formData.totalFailCount,
-        failure_date_time: formData.failureDateTime,
+        failure_date_time: isZeroFailures ? null : formData.failureDateTime,
         under_warranty: formData.underWarranty,
         under_amc: formData.underAMC,
         remarks: formData.remarks
@@ -214,7 +229,7 @@ const ACReportForm: React.FC<ACFormProps> = ({ onSubmit }) => {
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <div className="form-group">
-                <label className={labelClass}>Reporting Date <span className="text-red-500">*</span></label>
+                <label className={labelClass}>Reporting Date (Monday) <span className="text-red-500">*</span></label>
                 <input type="date" name="date" required className={inputClass} value={formData.date} onChange={handleChange} />
               </div>
 
@@ -282,8 +297,17 @@ const ACReportForm: React.FC<ACFormProps> = ({ onSubmit }) => {
                 </div>
 
                 <div className="form-group">
-                    <label className={labelClass}>Date & Time of Failure <span className="text-red-500">*</span></label>
-                    <input type="datetime-local" name="failureDateTime" required className={inputClass} value={formData.failureDateTime} onChange={handleChange} step="60" />
+                    <label className={labelClass}>Date & Time of Failure {formData.totalFailCount !== '0' && <span className="text-red-500">*</span>}</label>
+                    <input 
+                        type="datetime-local" 
+                        name="failureDateTime" 
+                        required={formData.totalFailCount !== '0'} 
+                        disabled={formData.totalFailCount === '0'}
+                        className={`${inputClass} ${formData.totalFailCount === '0' ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''}`}
+                        value={formData.failureDateTime} 
+                        onChange={handleChange} 
+                        step="60" 
+                    />
                 </div>
 
                 <div className="form-group">

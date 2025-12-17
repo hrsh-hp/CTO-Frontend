@@ -25,7 +25,7 @@ const DataSheetView: React.FC<DataSheetViewProps> = ({ data, type }) => {
 
   const getTitle = () => {
     switch (type) {
-      case 'failure': return 'Fire Alarm Position (Weekly)';
+      case 'failure': return 'Fire Alarm Position (ADI Division)';
       case 'relay': return 'Relay Room Opening Position';
       case 'maintenance': return 'Maintenance Activity (Daily)';
       case 'ips': return 'IPS Module Position (2025-2026)';
@@ -51,19 +51,30 @@ const DataSheetView: React.FC<DataSheetViewProps> = ({ data, type }) => {
     return { h: formattedHours, m: totalMins };
   };
 
+  // Helper for status background colors
+  const getStatusColor = (report: FailureReport) => {
+      if (report.status === 'Resolved') return 'bg-green-100 text-green-900';
+      return 'bg-red-100 text-red-900';
+  };
+
+  const getStatusContent = (report: FailureReport) => {
+      if (report.status === 'Resolved') return 'OK';
+      const dateStr = new Date(report.failureDateTime).toLocaleDateString('en-GB');
+      const reasons = report.reason.join(', ');
+      return `${dateStr} ${reasons} ${report.remarks}`;
+  };
+
   const renderSimpleTable = () => {
       let headers: string[] = [];
       
       if (type === 'failure') {
-          headers = ['Date', 'Station', 'Make', 'Failure Reason', 'Officer', 'Status'];
+          headers = ['Sr.No', 'Station', 'Route', 'Provided (Yes/No)', 'Date of Installation', 'Make', 'Failed Date & Remark'];
       } else if (type === 'maintenance') {
           headers = ['Date', 'Section', 'Type', 'Asset Nos', 'Work Done', 'Officer', 'Remarks'];
       } else if (type === 'ac') {
           headers = ['Date', 'Location', 'AC Type', 'Total Units', 'Failed', 'Fail Date/Time', 'AMC', 'Remarks'];
       } else if (type === 'movement') {
-          // Matching the requested image format: Sr No | Name | Designation | From | To | Work Done
-          // Sr No is dynamic index
-          headers = ['Sr. No.', 'Name', 'Designation', 'From', 'To', 'Work Done'];
+          headers = ['Sr. No.', 'Date', 'Name', 'Designation', 'From', 'To', 'Work Done'];
       } else if (type === 'jpc') {
           headers = ['JPC Date', 'Station', 'Total Points', 'Inspected Today', 'Total Cum.', 'Pending', 'Insp. By', 'Name'];
       }
@@ -72,21 +83,30 @@ const DataSheetView: React.FC<DataSheetViewProps> = ({ data, type }) => {
         <table className="w-full text-sm text-left text-slate-600 border-collapse border border-slate-200">
             <thead className="bg-slate-50 text-slate-700 font-bold text-xs uppercase">
                 <tr>
+                    {type === 'failure' && (
+                        <th colSpan={7} className="px-4 py-2 border border-slate-300 text-center bg-[#005d8f] text-white text-lg">
+                            Fire alarm Position {new Date().toLocaleDateString('en-GB')}
+                        </th>
+                    )}
                     {type === 'movement' && (
-                        <th colSpan={6} className="px-4 py-2 border border-slate-300 text-center bg-yellow-50 text-sm">
+                        <th colSpan={7} className="px-4 py-2 border border-slate-300 text-center bg-yellow-50 text-sm">
                             Daily movement of SSE & JE Signal of ADI-Division
                         </th>
                     )}
                 </tr>
+                
+                {/* Specific Header for Movement */}
                 {type === 'movement' && (
                     <tr className="bg-slate-100">
                         <th rowSpan={2} className="px-4 py-2 border border-slate-300 w-16 text-center">Sr. No.</th>
+                        <th rowSpan={2} className="px-4 py-2 border border-slate-300">Date</th>
                         <th rowSpan={2} className="px-4 py-2 border border-slate-300">Name</th>
                         <th rowSpan={2} className="px-4 py-2 border border-slate-300">Designation</th>
                         <th colSpan={2} className="px-4 py-1 border border-slate-300 text-center">Movement</th>
                         <th rowSpan={2} className="px-4 py-2 border border-slate-300 w-1/3">Work Done</th>
                     </tr>
                 )}
+
                 <tr>
                     {type === 'movement' ? (
                         <>
@@ -95,7 +115,7 @@ const DataSheetView: React.FC<DataSheetViewProps> = ({ data, type }) => {
                         </>
                     ) : (
                         headers.map((h, i) => (
-                            <th key={i} className="px-6 py-4 border-b border-slate-200 whitespace-nowrap">{h}</th>
+                            <th key={i} className="px-4 py-3 border border-slate-300 whitespace-nowrap bg-blue-100 text-black font-bold text-center">{h}</th>
                         ))
                     )}
                 </tr>
@@ -103,10 +123,21 @@ const DataSheetView: React.FC<DataSheetViewProps> = ({ data, type }) => {
             <tbody>
                 {filteredData.length > 0 ? (
                     filteredData.map((item: any, index) => {
-                        const rowClass = "px-6 py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors";
-                        const borderedRow = "border border-slate-300 px-4 py-2 text-xs text-slate-800"; // Tighter style for movement sheet
-
-                        if (type === 'ac') {
+                        const rowClass = "px-4 py-2 border border-slate-300 hover:bg-slate-50 transition-colors text-center";
+                        
+                        if (type === 'failure') {
+                            return (
+                                <tr key={index}>
+                                    <td className={rowClass}>{index + 1}</td>
+                                    <td className={rowClass}>{item.postingStationCode}</td>
+                                    <td className={rowClass}>{item.route} <span className="text-[10px] text-slate-500">(EI)</span></td>
+                                    <td className={rowClass}>Yes</td>
+                                    <td className={rowClass}>{item.date}</td>
+                                    <td className={rowClass}>{item.make}</td>
+                                    <td className={`${rowClass} ${getStatusColor(item)} font-medium`}>{getStatusContent(item)}</td>
+                                </tr>
+                            );
+                        } else if (type === 'ac') {
                             return (
                                 <tr key={index}>
                                     <td className={rowClass}>{item.date}</td>
@@ -116,31 +147,19 @@ const DataSheetView: React.FC<DataSheetViewProps> = ({ data, type }) => {
                                     <td className={rowClass + " text-red-600 font-bold"}>{item.totalFailCount}</td>
                                     <td className={rowClass}>{new Date(item.failureDateTime).toLocaleString('en-GB', { hour12: false })}</td>
                                     <td className={rowClass}>{item.underAMC}</td>
-                                    <td className={rowClass + " truncate max-w-xs italic text-slate-500"}>{item.remarks}</td>
-                                </tr>
-                            );
-                        } else if (type === 'failure') {
-                            return (
-                                <tr key={index}>
-                                    <td className={rowClass}>{item.date}</td>
-                                    <td className={rowClass + " font-bold text-slate-700"}>{item.postingStationCode}</td>
-                                    <td className={rowClass}>{item.make}</td>
-                                    <td className={rowClass}>{Array.isArray(item.reason) ? item.reason.join(', ') : item.reason}</td>
-                                    <td className={rowClass}>{item.sectionalOfficer}</td>
-                                    <td className={rowClass}>
-                                        <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${item.status === 'Open' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>{item.status}</span>
-                                    </td>
+                                    <td className={rowClass + " truncate max-w-xs italic text-slate-500 text-left"}>{item.remarks}</td>
                                 </tr>
                             );
                         } else if (type === 'movement') {
                             return (
                                 <tr key={index} className="hover:bg-slate-50">
-                                    <td className={`${borderedRow} text-center font-medium`}>{index + 1}</td>
-                                    <td className={`${borderedRow} font-bold uppercase`}>{item.name}</td>
-                                    <td className={`${borderedRow}`}>{item.designation}</td>
-                                    <td className={`${borderedRow} text-center`}>{item.moveFrom}</td>
-                                    <td className={`${borderedRow} text-center`}>{item.moveTo}</td>
-                                    <td className={`${borderedRow}`}>{item.workDone}</td>
+                                    <td className={`${rowClass} font-medium`}>{index + 1}</td>
+                                    <td className={`${rowClass}`}>{item.date}</td>
+                                    <td className={`${rowClass} font-bold uppercase`}>{item.name}</td>
+                                    <td className={`${rowClass}`}>{item.designation}</td>
+                                    <td className={`${rowClass}`}>{item.moveFrom}</td>
+                                    <td className={`${rowClass}`}>{item.moveTo}</td>
+                                    <td className={`${rowClass} text-left`}>{item.workDone}</td>
                                 </tr>
                             );
                         } else if (type === 'jpc') {
@@ -167,9 +186,9 @@ const DataSheetView: React.FC<DataSheetViewProps> = ({ data, type }) => {
                                     <td className={rowClass + " text-xs font-mono text-slate-800"}>
                                          {item.assetNumbers || "-"}
                                     </td>
-                                    <td className={rowClass + " truncate max-w-xs text-xs"}>{item.workDescription || "-"}</td>
+                                    <td className={rowClass + " truncate max-w-xs text-xs text-left"}>{item.workDescription || "-"}</td>
                                     <td className={rowClass}>{item.sectionalOfficer}</td>
-                                    <td className={rowClass + " truncate max-w-xs"}>{item.remarks}</td>
+                                    <td className={rowClass + " truncate max-w-xs text-left"}>{item.remarks}</td>
                                 </tr>
                             );
                         }

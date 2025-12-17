@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { FileText, Map, ChevronRight, User, ExternalLink, Activity, Key, Wrench, Radio, Signal, Table, ThermometerSnowflake, Navigation } from 'lucide-react';
+import { FileText, Map, ChevronRight, Activity, Key, Wrench, Radio, Signal, Table, ThermometerSnowflake, Navigation } from 'lucide-react';
 
 const Home: React.FC = () => {
   return (
@@ -14,7 +14,7 @@ const Home: React.FC = () => {
         
         <div className="container mx-auto px-4 flex flex-row items-center justify-center gap-6 relative z-10 animate-enter">
             {/* Indian Railways / S&T Logo */}
-            <div className="w-24 h-25 md:w-28 md:h-28 rounded-t-full rounded-b-none bg-white flex items-center justify-center shadow-xl ring-4 ring-white/20 overflow-hidden flex-shrink-0">
+            <div className="w-24 h-25 md:w-28 md:h-28 rounded-t-full p-1 rounded-b-none bg-white flex items-center justify-center shadow-xl ring-4 ring-white/20 overflow-hidden flex-shrink-0">
                 <img 
                     src="https://img-cdn.publive.online/fit-in/1280x960/filters:format(webp)/connect-gujarat-english/media/post_banners/wp-content/uploads/2018/12/Western-Railway-Logo.png" 
                     alt="Indian Railways Logo"

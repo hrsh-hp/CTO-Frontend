@@ -13,20 +13,20 @@ import type { OfficerNode } from '../types';
 
 // Helper interfaces for flat lists with relationships
 export interface FlatCSI {
-  id?: number;
+  id?: string | number;
   name: string;
   parentOfficer: string;
 }
 
 export interface FlatSI {
-  id?: number;
+  id?: string | number;
   name: string;
   parentCSI: string;
   parentOfficer: string;
 }
 
 export interface FlatStation {
-  id?: number;
+  id?: string | number;
   code: string;
   parentSI: string; // New field
   parentCSI: string;
@@ -46,7 +46,7 @@ interface MasterDataState {
 
   // Intelligent Flat Lists (with lineage)
   flatOfficers: string[];
-  flatOfficersList: { id?: number; name: string }[]; // New list with IDs
+  flatOfficersList: { id?: string | number; name: string }[]; // New list with IDs
   flatCSIs: FlatCSI[];
   flatSIs: FlatSI[]; // New flat list for Disconnection Form
   flatStations: FlatStation[];

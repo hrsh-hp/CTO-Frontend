@@ -36,7 +36,7 @@ const SectionalOfficers: React.FC = () => {
 
             <div className="p-8 md:p-12">
                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                    {officers.map((officer, index) => (
+                    {officers.map((officer) => (
                         <div key={officer} className="bg-slate-50 border border-slate-200 p-6 rounded-xl hover:border-[#005d8f] hover:shadow-lg hover:-translate-y-1 transition-all duration-300 cursor-default flex flex-col items-center justify-center text-center gap-4 group">
                             <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm border border-slate-100 group-hover:bg-[#005d8f] transition-colors duration-300">
                                 <ShieldCheck className="w-6 h-6 text-slate-400 group-hover:text-white transition-colors duration-300" />

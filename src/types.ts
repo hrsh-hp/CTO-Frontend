@@ -3,21 +3,27 @@ export type ReportStatus = 'Open' | 'Resolved';
 
 // --- Master Data Interfaces ---
 export interface StationNode {
+  id?: string | number;
   code: string;
   name: string;
 }
 
 export interface SINode {
+  id?: string | number;
   name: string; // e.g., "SI ADI", "SI VTA"
-  stations: string[]; // Station Codes
+  stations: (string | StationNode)[]; // Station Codes
 }
 
 export interface CSINode {
+  id?: string | number;
   name: string;
-  sis: SINode[]; // Changed from direct stations to SIs
+  sis?: SINode[]; // Changed from direct stations to SIs
+  si_units?: SINode[];
+  stations?: (string | StationNode)[];
 }
 
 export interface OfficerNode {
+  id?: string | number;
   name: string;
   csis: CSINode[];
 }
@@ -76,6 +82,9 @@ export interface RelayRoomLog {
 export interface MaintenanceReport {
   id: string;
   type: 'maintenance';
+  name: string;
+  designation: string;
+  stationPosted: string;
   date: string;
   sectionalOfficer: string;
   csi: string;

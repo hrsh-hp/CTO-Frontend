@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useMasterData } from '../contexts/MasterDataContext';
 import type { DisconnectionReport, DisconnectionEntry } from '../types';
 import { Save, ArrowLeft, Loader2, Plus, Activity, Train, Trash2, AlertCircle } from 'lucide-react';
