@@ -246,86 +246,83 @@ const DataSheetView: React.FC<DataSheetViewProps> = ({ data, type }) => {
   };
 
   const renderDisconnectionTable = () => {
-      // Group table by Reports because structure is nested
+      // Flatten report entries but grouped by report to render CSI column with rowSpan
       if (filteredData.length === 0) {
           return <div className="p-12 text-center text-slate-400">No Disconnection Reports found.</div>;
       }
 
       return (
-          <div className="space-y-8 p-6">
-              {(filteredData as DisconnectionReport[]).map((report, rIndex) => (
-                  <div key={report.id} className="border border-slate-300 rounded-lg overflow-hidden shadow-sm">
-                      <div className="bg-slate-100 p-3 border-b border-slate-300 flex justify-between items-center text-sm">
-                          <div>
-                              <span className="font-bold text-slate-700 uppercase mr-4">{report.csi}</span>
-                              <span className="text-slate-500">Date: <span className="font-medium text-slate-800">{report.date}</span></span>
-                          </div>
-                          <div className="text-xs text-slate-400">Report #{rIndex + 1}</div>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-xs text-center border-collapse text-slate-700 min-w-[1000px]">
-                            <thead>
-                                <tr className="bg-slate-50 text-slate-700 uppercase font-bold border-b border-slate-300">
-                                    <th rowSpan={2} className="px-2 py-2 border-r border-slate-300 w-12">Sr. No.</th>
-                                    <th rowSpan={2} className="px-2 py-2 border-r border-slate-300 w-32 text-left">Section SI</th>
-                                    <th colSpan={3} className="px-2 py-1 border-r border-slate-300 border-b border-slate-200">A (Replacement)</th>
-                                    <th colSpan={3} className="px-2 py-1 border-r border-slate-300 border-b border-slate-200">B (Engg. Work)</th>
-                                    <th colSpan={3} className="px-2 py-1 border-r border-slate-300 border-b border-slate-200">C (Maintenance)</th>
-                                    <th colSpan={3} className="px-2 py-1 border-r border-slate-300 border-b border-slate-200">D (Failure)</th>
-                                    <th colSpan={3} className="px-2 py-1 bg-slate-100 border-b border-slate-300">Total</th>
-                                </tr>
-                                <tr className="bg-white text-[10px] text-slate-600 font-medium border-b border-slate-300">
-                                    {[1, 2, 3, 4, 5].map(i => (
-                                        <React.Fragment key={i}>
-                                            <th className="px-1 py-1 border-r border-slate-200 w-10">D</th>
-                                            <th className="px-1 py-1 border-r border-slate-200 w-10">A</th>
-                                            <th className={`px-1 py-1 border-r border-slate-300 w-10 ${i===5 ? 'bg-slate-50':''}`}>N</th>
-                                        </React.Fragment>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {report.entries.map((entry, idx) => {
-                                    const rowTotal = {
-                                        d: entry.catA.d + entry.catB.d + entry.catC.d + entry.catD.d,
-                                        a: entry.catA.a + entry.catB.a + entry.catC.a + entry.catD.a,
-                                        n: entry.catA.n + entry.catB.n + entry.catC.n + entry.catD.n,
-                                    };
-                                    return (
-                                        <tr key={entry.id || idx} className="border-b border-slate-100 hover:bg-slate-50">
-                                            <td className="border-r border-slate-200 text-slate-400">{idx + 1}</td>
-                                            <td className="px-2 py-2 border-r border-slate-200 text-left font-bold text-slate-700">{entry.siName}</td>
-                                            
-                                            {/* A */}
-                                            <td className="border-r border-slate-200">{entry.catA.d || '-'}</td>
-                                            <td className="border-r border-slate-200">{entry.catA.a || '-'}</td>
-                                            <td className="border-r border-slate-200 bg-red-50 text-red-700">{entry.catA.n || '-'}</td>
-                                            {/* B */}
-                                            <td className="border-r border-slate-200">{entry.catB.d || '-'}</td>
-                                            <td className="border-r border-slate-200">{entry.catB.a || '-'}</td>
-                                            <td className="border-r border-slate-200 bg-red-50 text-red-700">{entry.catB.n || '-'}</td>
-                                            {/* C */}
-                                            <td className="border-r border-slate-200">{entry.catC.d || '-'}</td>
-                                            <td className="border-r border-slate-200">{entry.catC.a || '-'}</td>
-                                            <td className="border-r border-slate-200 bg-red-50 text-red-700">{entry.catC.n || '-'}</td>
-                                            {/* D */}
-                                            <td className="border-r border-slate-200">{entry.catD.d || '-'}</td>
-                                            <td className="border-r border-slate-200">{entry.catD.a || '-'}</td>
-                                            <td className="border-r border-slate-200 bg-red-50 text-red-700">{entry.catD.n || '-'}</td>
-                                            
-                                            {/* Total */}
-                                            <td className="border-r border-slate-200 bg-slate-50 font-bold">{rowTotal.d}</td>
-                                            <td className="border-r border-slate-200 bg-slate-50 font-bold">{rowTotal.a}</td>
-                                            <td className="bg-slate-50 font-bold text-red-700">{rowTotal.n}</td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                      </div>
-                  </div>
-              ))}
-          </div>
+        <div className="overflow-x-auto pb-4">
+            <table className="w-full text-xs text-center border-collapse text-slate-700 min-w-[1400px]">
+                <thead>
+                    <tr className="bg-slate-100 text-slate-800 font-bold uppercase border-b border-slate-300">
+                        <th rowSpan={2} className="px-2 py-2 border-r border-slate-300 w-12">Sr. No.</th>
+                        <th rowSpan={2} className="px-2 py-2 border-r border-slate-300 w-24">CSI</th>
+                        <th rowSpan={2} className="px-2 py-2 border-r border-slate-300 w-32 text-left">Section SI</th>
+                        <th colSpan={3} className="px-2 py-1 border-r border-slate-300 border-b border-slate-200">A (Replacement)</th>
+                        <th colSpan={3} className="px-2 py-1 border-r border-slate-300 border-b border-slate-200">B (Engg. Work)</th>
+                        <th colSpan={3} className="px-2 py-1 border-r border-slate-300 border-b border-slate-200">C (Maintenance)</th>
+                        <th colSpan={3} className="px-2 py-1 border-r border-slate-300 border-b border-slate-200">D (Failure)</th>
+                        <th colSpan={3} className="px-2 py-1 bg-slate-200 border-b border-slate-300">Total</th>
+                    </tr>
+                    <tr className="bg-slate-50 text-[10px] text-slate-600 font-medium border-b border-slate-300">
+                        {[1, 2, 3, 4, 5].map(i => (
+                            <React.Fragment key={i}>
+                                <th className="px-1 py-1 border-r border-slate-200 w-10">D</th>
+                                <th className="px-1 py-1 border-r border-slate-200 w-10">A</th>
+                                <th className={`px-1 py-1 border-r border-slate-300 w-10 ${i===5 ? 'bg-slate-50':''}`}>N</th>
+                            </React.Fragment>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {(filteredData as DisconnectionReport[]).map((report, rIndex) => (
+                        <React.Fragment key={report.id}>
+                            {report.entries.map((entry, idx) => {
+                                const rowTotal = {
+                                    d: entry.catA.d + entry.catB.d + entry.catC.d + entry.catD.d,
+                                    a: entry.catA.a + entry.catB.a + entry.catC.a + entry.catD.a,
+                                    n: entry.catA.n + entry.catB.n + entry.catC.n + entry.catD.n,
+                                };
+                                return (
+                                    <tr key={entry.id || idx} className="border-b border-slate-100 hover:bg-slate-50">
+                                        {/* Merged CSI Column Logic */}
+                                        {idx === 0 && (
+                                            <>
+                                                <td rowSpan={report.entries.length} className="border-r border-slate-300 bg-white font-bold align-middle">{rIndex + 1}</td>
+                                                <td rowSpan={report.entries.length} className="border-r border-slate-300 bg-white font-bold align-middle uppercase text-blue-800">{report.csi}</td>
+                                            </>
+                                        )}
+                                        
+                                        <td className="px-2 py-2 border-r border-slate-200 text-left font-bold text-slate-700 bg-slate-50/50">{entry.siName}</td>
+                                        
+                                        <td className="border-r border-slate-200">{entry.catA.d || '-'}</td>
+                                        <td className="border-r border-slate-200">{entry.catA.a || '-'}</td>
+                                        <td className="border-r border-slate-200 bg-red-50 text-red-700">{entry.catA.n || '-'}</td>
+
+                                        <td className="border-r border-slate-200">{entry.catB.d || '-'}</td>
+                                        <td className="border-r border-slate-200">{entry.catB.a || '-'}</td>
+                                        <td className="border-r border-slate-200 bg-red-50 text-red-700">{entry.catB.n || '-'}</td>
+
+                                        <td className="border-r border-slate-200">{entry.catC.d || '-'}</td>
+                                        <td className="border-r border-slate-200">{entry.catC.a || '-'}</td>
+                                        <td className="border-r border-slate-200 bg-red-50 text-red-700">{entry.catC.n || '-'}</td>
+
+                                        <td className="border-r border-slate-200">{entry.catD.d || '-'}</td>
+                                        <td className="border-r border-slate-200">{entry.catD.a || '-'}</td>
+                                        <td className="border-r border-slate-200 bg-red-50 text-red-700">{entry.catD.n || '-'}</td>
+                                        
+                                        <td className="border-r border-slate-200 bg-slate-50 font-bold">{rowTotal.d}</td>
+                                        <td className="border-r border-slate-200 bg-slate-50 font-bold">{rowTotal.a}</td>
+                                        <td className="bg-slate-50 font-bold text-red-700">{rowTotal.n}</td>
+                                    </tr>
+                                );
+                            })}
+                        </React.Fragment>
+                    ))}
+                </tbody>
+            </table>
+        </div>
       );
   };
 

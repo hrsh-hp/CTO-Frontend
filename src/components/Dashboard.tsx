@@ -1,7 +1,6 @@
-
 import React, { useMemo, useState } from 'react';
 import { INITIAL_FILTERS } from '../types';
-import type { FailureReport, RelayRoomLog, MaintenanceReport, IPSReport, ACFailureReport, MovementReport, JPCReport, FilterState } from '../types';
+import type { FailureReport, RelayRoomLog, MaintenanceReport, IPSReport, ACFailureReport, DisconnectionReport, MovementReport, JPCReport, FilterState } from '../types';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from 'recharts';
@@ -18,19 +17,20 @@ interface DashboardProps {
   maintenanceLogs: MaintenanceReport[];
   ipsReports?: IPSReport[];
   acReports?: ACFailureReport[];
+  disconnectionReports?: DisconnectionReport[];
   movementReports?: MovementReport[];
   jpcReports?: JPCReport[];
 }
 
 const inputFilterClass = "w-full px-3 py-2 bg-white border border-slate-300 rounded focus:border-[#005d8f] focus:ring-1 focus:ring-[#005d8f] outline-none text-sm text-slate-700 transition-all";
 
-const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceLogs, ipsReports = [], acReports = [], movementReports = [], jpcReports = [] }) => {
+const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceLogs, ipsReports = [], acReports = [], disconnectionReports = [], movementReports = [], jpcReports = [] }) => {
   const { 
     flatOfficers, flatCSIs, flatStations,
     makes, reasons, ipsModules, ipsCompanies 
   } = useMasterData();
 
-  const [activeTab, setActiveTab] = useState<'failures' | 'relay' | 'maintenance' | 'ips' | 'ac' | 'movement' | 'jpc'>('failures');
+  const [activeTab, setActiveTab] = useState<'failures' | 'relay' | 'maintenance' | 'ips' | 'ac' | 'disconnection' | 'movement' | 'jpc'>('failures');
   const [filters, setFilters] = useState<FilterState>(INITIAL_FILTERS);
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -130,6 +130,16 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
       });
   }, [acReports, filters]);
 
+  const filteredDisconnectionReports = useMemo(() => {
+    return disconnectionReports.filter(r => {
+      if (filters.sectionalOfficer && r.sectionalOfficer !== filters.sectionalOfficer) return false;
+      if (filters.csi && r.csi !== filters.csi) return false;
+      if (filters.dateRangeStart && r.date < filters.dateRangeStart) return false;
+      if (filters.dateRangeEnd && r.date > filters.dateRangeEnd) return false;
+      return true;
+    });
+  }, [disconnectionReports, filters]);
+
   const filteredMovementReports = useMemo(() => {
       return movementReports.filter(r => {
           if (filters.sectionalOfficer && r.sectionalOfficer !== filters.sectionalOfficer) return false;
@@ -197,6 +207,14 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
         const topCSI = Object.entries(csiCounts).sort((a,b) => b[1] - a[1])[0]?.[0] || 'N/A';
         return { totalReports, underAMC, topCSI };
    }, [filteredACReports]);
+
+   const disconnectionStats = useMemo(() => {
+      return {
+          totalReports: filteredDisconnectionReports.length,
+          totalEntries: filteredDisconnectionReports.reduce((acc, curr) => acc + curr.entries.length, 0),
+          topCSI: filteredDisconnectionReports.length > 0 ? Object.entries(filteredDisconnectionReports.reduce((acc, curr) => { acc[curr.csi] = (acc[curr.csi] || 0) + 1; return acc; }, {} as Record<string, number>)).sort((a, b) => b[1] - a[1])[0][0] : '-'
+      };
+  }, [filteredDisconnectionReports]);
 
    const movementStats = useMemo(() => {
        const total = filteredMovementReports.length;
@@ -270,6 +288,12 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
         if (filters.csi) queryParams.append('csi', filters.csi);
         if (filters.stationCode) queryParams.append('location_code', filters.stationCode); 
         url = `/api/forms/ac-reports/export-excel/?${queryParams.toString()}`;
+    } else if (activeTab === 'disconnection') {
+        if (filters.sectionalOfficer) queryParams.append('sectional_officer', filters.sectionalOfficer);
+        if (filters.csi) queryParams.append('csi', filters.csi);
+        if (filters.dateRangeStart) queryParams.append('date__gte', filters.dateRangeStart);
+        if (filters.dateRangeEnd) queryParams.append('date__lte', filters.dateRangeEnd);
+        url = `/api/forms/disconnection-reports/export-excel/?${queryParams.toString()}`;
     } else if (activeTab === 'movement') {
         if (filters.sectionalOfficer) queryParams.append('sectional_officer', filters.sectionalOfficer);
         if (filters.csi) queryParams.append('csi', filters.csi);
@@ -422,6 +446,13 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
             AC Reports
           </button>
           <button 
+             onClick={() => setActiveTab('disconnection')}
+             className={`flex items-center gap-2 px-5 py-2 rounded text-sm font-medium transition-all duration-300 ${activeTab === 'disconnection' ? 'bg-[#005d8f] text-white shadow' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <Activity className="w-4 h-4" />
+            Disconnection
+          </button>
+          <button 
              onClick={() => setActiveTab('movement')}
              className={`flex items-center gap-2 px-5 py-2 rounded text-sm font-medium transition-all duration-300 ${activeTab === 'movement' ? 'bg-[#005d8f] text-white shadow' : 'text-slate-600 hover:bg-slate-50'}`}
           >
@@ -548,6 +579,13 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                 <StatCard title="Most Affected CSI" value={acStats.topCSI} icon={<AlertTriangle className="text-orange-500" />} isText />
             </div>
         )}
+        {activeTab === 'disconnection' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatCard title="Total Reports" value={disconnectionStats.totalReports} icon={<Activity className="text-orange-600" />} subtext="Daily Submissions" />
+                <StatCard title="Total Entries" value={disconnectionStats.totalEntries} icon={<FileText className="text-blue-600" />} subtext="Individual Records" />
+                <StatCard title="Top CSI" value={disconnectionStats.topCSI} icon={<MapPin className="text-purple-600" />} isText />
+            </div>
+        )}
         {activeTab === 'movement' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard title="Total Movements" value={movementStats.total} icon={<Navigation className="text-indigo-600" />} subtext="Logs Submitted" />
@@ -609,6 +647,7 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                 {activeTab === 'maintenance' && 'Maintenance Logs'}
                 {activeTab === 'ips' && 'Weekly IPS Reports'}
                 {activeTab === 'ac' && 'AC Unit Reports'}
+                {activeTab === 'disconnection' && 'Disconnection Reports'}
                 {activeTab === 'movement' && 'SI/CSI Movement Reports'}
                 {activeTab === 'jpc' && 'JPC Done Reports'}
                 <span className="ml-2 text-slate-400 font-normal">
@@ -616,6 +655,7 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                       activeTab === 'relay' ? filteredRelayLogs.length : 
                       activeTab === 'maintenance' ? filteredMaintenanceLogs.length : 
                       activeTab === 'ac' ? filteredACReports.length :
+                      activeTab === 'disconnection' ? filteredDisconnectionReports.length :
                       activeTab === 'movement' ? filteredMovementReports.length :
                       activeTab === 'jpc' ? filteredJPCReports.length :
                       filteredIPSReports.length})
@@ -626,7 +666,7 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
               className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-300 rounded text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-[#005d8f] transition-all hover:-translate-y-0.5 shadow-sm"
             >
               <Download className="w-4 h-4" />
-              {['ips', 'relay', 'ac', 'movement', 'jpc'].includes(activeTab) ? 'Export Excel' : 'Export CSV'}
+              {['ips', 'relay', 'ac', 'disconnection', 'movement', 'jpc'].includes(activeTab) ? 'Export Excel' : 'Export CSV'}
             </button>
         </div>
         <div className="overflow-x-auto">
@@ -641,12 +681,13 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                             <th className="px-6 py-3">Reasons</th>
                             <th className="px-6 py-3">Officer</th>
                             <th className="px-6 py-3 text-center">AMC</th>
+                            <th className="px-6 py-3">Submitted By</th>
                             <th className="px-6 py-3 text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {filteredFailures.length === 0 ? (
-                            <tr><td colSpan={8} className="text-center py-8 text-slate-400">No reports found.</td></tr>
+                            <tr><td colSpan={9} className="text-center py-8 text-slate-400">No reports found.</td></tr>
                         ) : (
                             filteredFailures.map((report) => (
                                 <React.Fragment key={report.id}>
@@ -666,6 +707,7 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                                         <td className="px-6 py-4 text-center">
                                             {report.amc === 'Yes' ? <span className="text-green-600 font-bold text-xs">YES</span> : <span className="text-slate-400 text-xs">NO</span>}
                                         </td>
+                                        <td className="px-6 py-4 font-medium text-slate-600">{report.name}</td>
                                         <td className="px-6 py-4 text-right">
                                             <button onClick={() => toggleRow(report.id)} className="text-[#005d8f] hover:underline font-medium">
                                                 {expandedRow === report.id ? 'Close' : 'View'}
@@ -674,7 +716,7 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                                     </tr>
                                     {expandedRow === report.id && (
                                         <tr className="bg-slate-50 border-b border-slate-200 animate-enter">
-                                            <td colSpan={8} className="px-6 py-4">
+                                            <td colSpan={9} className="px-6 py-4">
                                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
                                                     <div>
                                                         <h4 className="font-bold text-slate-900 mb-2 uppercase text-xs">Reporter Details</h4>
@@ -721,6 +763,7 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                               <th className="p-3 border-r border-slate-300 whitespace-nowrap">D/L Open</th>
                               <th className="p-3 border-r border-slate-300 whitespace-nowrap">D/L Close</th>
                               <th className="p-3 border-r border-slate-300 whitespace-nowrap">Code</th>
+                              <th className="p-3 border-r border-slate-300 whitespace-nowrap">Submitted By</th>
                           </tr>
                       </thead>
                       <tbody>
@@ -742,6 +785,7 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                                       <td className="p-2 border-r border-slate-200 bg-slate-50"></td> 
                                       <td className="p-2 border-r border-slate-200 bg-slate-50"></td>
                                       <td className="p-2 border-r border-slate-200 bg-slate-100 text-[10px] font-bold text-slate-600">{item.openingCode}</td>
+                                      <td className="p-2 border-r border-slate-200 font-medium text-slate-600">{item.name}</td>
                                   </tr>
                               );
                           })}
@@ -763,11 +807,12 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                             <th className="px-6 py-3">Asset Nos.</th>
                             <th className="px-6 py-3">Work Done</th>
                             <th className="px-6 py-3">Remarks</th>
+                            <th className="px-6 py-3">Submitted By</th>
                         </tr>
                     </thead>
                     <tbody>
                          {filteredMaintenanceLogs.length === 0 ? (
-                            <tr><td colSpan={8} className="text-center py-8 text-slate-400">No maintenance logs found.</td></tr>
+                            <tr><td colSpan={9} className="text-center py-8 text-slate-400">No maintenance logs found.</td></tr>
                         ) : (
                             filteredMaintenanceLogs.map((report) => (
                                 <tr key={report.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
@@ -788,6 +833,7 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                                         {report.workDescription || <span className="text-slate-300">-</span>}
                                     </td>
                                     <td className="px-6 py-4 text-slate-500 truncate max-w-xs" title={report.remarks}>{report.remarks}</td>
+                                    <td className="px-6 py-4 font-medium text-slate-600">{report.name}</td>
                                 </tr>
                             ))
                          )}
@@ -854,7 +900,10 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                                                         {mIndex === 0 && (
                                                             <>
                                                                 <td rowSpan={8} className="p-2 border-r border-slate-300 bg-white font-bold align-middle">{rIndex + 1}</td>
-                                                                <td rowSpan={8} className="p-2 border-r border-slate-300 bg-white font-bold align-middle">{report.csi}</td>
+                                                                <td rowSpan={8} className="p-2 border-r border-slate-300 bg-white font-bold align-middle">
+                                                                    <div>{report.csi}</div>
+                                                                    <div className="text-[9px] font-normal text-slate-500 mt-1">By: {report.name}</div>
+                                                                </td>
                                                             </>
                                                         )}
                                                         <td className="p-2 text-left border-r border-slate-300 font-medium bg-slate-50">{module}</td>
@@ -938,11 +987,12 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                                 <th className="px-6 py-3">Failure Time</th>
                                 <th className="px-6 py-3">AMC</th>
                                 <th className="px-6 py-3">Remarks</th>
+                                <th className="px-6 py-3">Submitted By</th>
                             </tr>
                         </thead>
                         <tbody>
                             {filteredACReports.length === 0 ? (
-                                <tr><td colSpan={8} className="text-center py-8 text-slate-400">No AC reports found.</td></tr>
+                                <tr><td colSpan={9} className="text-center py-8 text-slate-400">No AC reports found.</td></tr>
                             ) : (
                                 filteredACReports.map((report) => (
                                     <tr key={report.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
@@ -956,7 +1006,91 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                                             {report.underAMC === 'Yes' ? <span className="text-green-600 font-bold text-xs">YES</span> : <span className="text-slate-400 text-xs">NO</span>}
                                         </td>
                                         <td className="px-6 py-4 max-w-xs truncate italic text-slate-500" title={report.remarks}>{report.remarks}</td>
+                                        <td className="px-6 py-4 font-medium text-slate-600">{report.name}</td>
                                     </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {activeTab === 'disconnection' && (
+                <div className="overflow-x-auto pb-4">
+                    <table className="w-full text-xs text-center border-collapse text-slate-700 min-w-[1400px]">
+                        <thead>
+                            <tr className="bg-slate-100 text-slate-800 font-bold uppercase border-b border-slate-300">
+                                <th rowSpan={2} className="px-2 py-2 border-r border-slate-300 w-12">Sr. No.</th>
+                                <th rowSpan={2} className="px-2 py-2 border-r border-slate-300 w-24">CSI</th>
+                                <th rowSpan={2} className="px-2 py-2 border-r border-slate-300 w-32 text-left">Section SI</th>
+                                <th colSpan={3} className="px-2 py-1 border-r border-slate-300 border-b border-slate-200">A (Replacement)</th>
+                                <th colSpan={3} className="px-2 py-1 border-r border-slate-300 border-b border-slate-200">B (Engg. Work)</th>
+                                <th colSpan={3} className="px-2 py-1 border-r border-slate-300 border-b border-slate-200">C (Maintenance)</th>
+                                <th colSpan={3} className="px-2 py-1 border-r border-slate-300 border-b border-slate-200">D (Failure)</th>
+                                <th colSpan={3} className="px-2 py-1 bg-slate-200 border-b border-slate-300">Total</th>
+                                <th rowSpan={2} className="px-2 py-2 border-l border-slate-300 w-32">Submitted By</th>
+                            </tr>
+                            <tr className="bg-slate-50 text-[10px] text-slate-600 font-medium border-b border-slate-300">
+                                {[1, 2, 3, 4, 5].map(i => (
+                                    <React.Fragment key={i}>
+                                        <th className="px-1 py-1 border-r border-slate-200 w-10">D</th>
+                                        <th className="px-1 py-1 border-r border-slate-200 w-10">A</th>
+                                        <th className={`px-1 py-1 border-r border-slate-300 w-10 ${i===5 ? 'bg-slate-50':''}`}>N</th>
+                                    </React.Fragment>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredDisconnectionReports.length === 0 ? (
+                                <tr><td colSpan={20} className="text-center py-8 text-slate-400">No Disconnection Reports found.</td></tr>
+                            ) : (
+                                filteredDisconnectionReports.map((report, rIndex) => (
+                                    <React.Fragment key={report.id}>
+                                        {report.entries.map((entry, idx) => {
+                                            const rowTotal = {
+                                                d: entry.catA.d + entry.catB.d + entry.catC.d + entry.catD.d,
+                                                a: entry.catA.a + entry.catB.a + entry.catC.a + entry.catD.a,
+                                                n: entry.catA.n + entry.catB.n + entry.catC.n + entry.catD.n,
+                                            };
+                                            return (
+                                                <tr key={entry.id || idx} className="border-b border-slate-100 hover:bg-slate-50">
+                                                    {/* Merged CSI Column Logic */}
+                                                    {idx === 0 && (
+                                                        <>
+                                                            <td rowSpan={report.entries.length} className="border-r border-slate-300 bg-white font-bold align-middle">{rIndex + 1}</td>
+                                                            <td rowSpan={report.entries.length} className="border-r border-slate-300 bg-white font-bold align-middle uppercase text-blue-800">{report.csi}</td>
+                                                        </>
+                                                    )}
+                                                    
+                                                    <td className="px-2 py-2 border-r border-slate-200 text-left font-bold text-slate-700 bg-slate-50/50">{entry.siName}</td>
+                                                    
+                                                    <td className="border-r border-slate-200">{entry.catA.d || '-'}</td>
+                                                    <td className="border-r border-slate-200">{entry.catA.a || '-'}</td>
+                                                    <td className="border-r border-slate-200 bg-red-50 text-red-700">{entry.catA.n || '-'}</td>
+
+                                                    <td className="border-r border-slate-200">{entry.catB.d || '-'}</td>
+                                                    <td className="border-r border-slate-200">{entry.catB.a || '-'}</td>
+                                                    <td className="border-r border-slate-200 bg-red-50 text-red-700">{entry.catB.n || '-'}</td>
+
+                                                    <td className="border-r border-slate-200">{entry.catC.d || '-'}</td>
+                                                    <td className="border-r border-slate-200">{entry.catC.a || '-'}</td>
+                                                    <td className="border-r border-slate-200 bg-red-50 text-red-700">{entry.catC.n || '-'}</td>
+
+                                                    <td className="border-r border-slate-200">{entry.catD.d || '-'}</td>
+                                                    <td className="border-r border-slate-200">{entry.catD.a || '-'}</td>
+                                                    <td className="border-r border-slate-200 bg-red-50 text-red-700">{entry.catD.n || '-'}</td>
+                                                    
+                                                    <td className="border-r border-slate-200 bg-slate-50 font-bold">{rowTotal.d}</td>
+                                                    <td className="border-r border-slate-200 bg-slate-50 font-bold">{rowTotal.a}</td>
+                                                    <td className="bg-slate-50 font-bold text-red-700 border-r border-slate-300">{rowTotal.n}</td>
+
+                                                    {idx === 0 && (
+                                                        <td rowSpan={report.entries.length} className="border-l border-slate-300 bg-white font-medium text-slate-600 align-middle">{report.name}</td>
+                                                    )}
+                                                </tr>
+                                            );
+                                        })}
+                                    </React.Fragment>
                                 ))
                             )}
                         </tbody>
@@ -990,7 +1124,7 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                                         <td className="px-6 py-4 font-bold text-indigo-700">{report.moveTo}</td>
                                         <td className="px-6 py-4 text-xs max-w-xs truncate" title={report.workDone}>{report.workDone}</td>
                                     </tr>
-                                ))
+                                                               ))
                             )}
                         </tbody>
                     </table>

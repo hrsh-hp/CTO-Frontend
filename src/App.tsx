@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import Header from './components/Header';
@@ -130,6 +131,13 @@ const MainLayout = () => {
             }
         } catch (error) { console.warn("Failed to fetch JPC reports", error); }
     };
+
+    // 5. Disconnection (Needs Fetching or Mock)
+    const fetchDisconnections = async () => {
+        // Placeholder for API fetch similar to above
+        // setDisconnectionReports(...)
+    };
+    fetchDisconnections();
 
     fetchFailures();
     fetchIPSReports();
@@ -273,6 +281,7 @@ const MainLayout = () => {
                   maintenanceLogs={maintenanceLogs} 
                   ipsReports={ipsReports}
                   acReports={acReports}
+                  disconnectionReports={disconnectionReports}
                   movementReports={movementReports}
                   jpcReports={jpcReports}
               />

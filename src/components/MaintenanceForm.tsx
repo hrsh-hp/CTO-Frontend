@@ -14,24 +14,8 @@ interface MaintenanceFormProps {
 const inputClass = "w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:border-[#005d8f] focus:ring-4 focus:ring-[#005d8f]/10 outline-none text-slate-700 placeholder:text-slate-400 text-sm transition-all duration-200";
 const labelClass = "block text-[11px] font-semibold text-slate-500 mb-1.5 uppercase tracking-wider";
 
-// Helper to get CSRF token
-const getCookie = (name: string) => {
-  let cookieValue = null;
-  if (document.cookie && document.cookie !== '') {
-    const cookies = document.cookie.split(';');
-    for (let i = 0; i < cookies.length; i++) {
-      const cookie = cookies[i].trim();
-      if (cookie.substring(0, name.length + 1) === (name + '=')) {
-        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-        break;
-      }
-    }
-  }
-  return cookieValue;
-};
-
 const MaintenanceForm: React.FC<MaintenanceFormProps> = ({ onSubmit }) => {
-  const { flatOfficers, flatCSIs, flatStations, designations, flatOfficersList, rawDesignations } = useMasterData();
+  const { flatOfficers, flatCSIs, flatStations, designations } = useMasterData();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -40,7 +24,8 @@ const MaintenanceForm: React.FC<MaintenanceFormProps> = ({ onSubmit }) => {
     sectionalOfficer: '',
     csi: '',
     date: new Date().toISOString().split('T')[0],
-    stationMaintained: '',
+    section: '',
+    assetNumbers: '',
     maintenanceType: '',
     workDescription: '',
     remarks: '',
@@ -67,8 +52,6 @@ const MaintenanceForm: React.FC<MaintenanceFormProps> = ({ onSubmit }) => {
     return flatStations.map(s => s.code);
   }, [formData.sectionalOfficer, formData.csi, flatStations]);
 
-  const allStations = useMemo(() => flatStations.map(s => s.code), [flatStations]);
-
   const handleChange = (e: { target: { name: string; value: string } } | React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     // Cascading Reset Logic
@@ -90,73 +73,15 @@ const MaintenanceForm: React.FC<MaintenanceFormProps> = ({ onSubmit }) => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-
-    // Lookup IDs for Backend
-    const officerObj = flatOfficersList.find(o => o.name === formData.sectionalOfficer);
-    const csiObj = flatCSIs.find(c => c.name === formData.csi && c.parentOfficer === formData.sectionalOfficer);
-    const stationPostedObj = flatStations.find(s => s.code === formData.stationPosted);
-    const stationMaintainedObj = flatStations.find(s => s.code === formData.stationMaintained);
-    const desigObj = rawDesignations?.find(d => d.title === formData.designation);
-
-    // 1. Prepare Backend Payload (snake_case)
-    const apiPayload = {
-        reporter_name: formData.name,
-        designation: desigObj ? desigObj.id : null,
-        station_posted: stationPostedObj ? stationPostedObj.id : null,
-        sectional_officer: officerObj ? officerObj.id : null,
-        csi: csiObj ? csiObj.id : null,
-        date: formData.date,
-        section: stationMaintainedObj ? stationMaintainedObj.id : null,
-        maintenance_type: formData.maintenanceType,
-        work_description: formData.workDescription,
-        remarks: formData.remarks,
-        asset_numbers: '' 
-    };
-
-    // 2. Prepare Frontend Payload (camelCase)
-    const appPayload: Omit<MaintenanceReport, 'id' | 'submittedAt' | 'type'> = {
-        name: formData.name,
-        designation: formData.designation,
-        stationPosted: formData.stationPosted,
-        sectionalOfficer: formData.sectionalOfficer,
-        csi: formData.csi,
-        date: formData.date,
-        section: formData.stationMaintained,
-        maintenanceType: formData.maintenanceType,
-        workDescription: formData.workDescription,
-        remarks: formData.remarks,
-        assetNumbers: ''
-    };
-
-    try {
-        const csrftoken = getCookie('csrftoken');
-        const API_BASE = import.meta.env.VITE_API_BASE_URL;
-        const response = await fetch(`${API_BASE}/api/forms/maintenance-reports/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrftoken || '',
-            },
-            credentials: 'include',
-            body: JSON.stringify(apiPayload)
-        });
-
-        if (response.ok) {
-            console.log("✅ Maintenance Report saved to DB.");
-        } else {
-            console.warn("⚠️ API Error:", await response.text());
-        }
-    } catch (err) {
-        console.error("❌ Network Error:", err);
-    }
     
+    // Simulate network delay
     setTimeout(() => {
-        onSubmit(appPayload);
+        onSubmit(formData);
         setIsSubmitting(false);
-    }, 500);
+    }, 1000);
   };
 
   return (
@@ -264,14 +189,15 @@ const MaintenanceForm: React.FC<MaintenanceFormProps> = ({ onSubmit }) => {
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="form-group">
-                <label className={labelClass}>Station / Location Maintained <span className="text-red-500">*</span></label>
-                <SearchableSelect 
-                  name="stationMaintained" 
-                  value={formData.stationMaintained} 
-                  options={allStations} // Maintained station can be anywhere
-                  onChange={handleChange} 
-                  required 
-                  placeholder="Select..."
+                <label className={labelClass}>Section / Station (Code) <span className="text-red-500">*</span></label>
+                <input 
+                    type="text" 
+                    name="section" 
+                    required 
+                    className={inputClass} 
+                    value={formData.section} 
+                    onChange={handleChange} 
+                    placeholder="e.g. ADI or ADI-GER" 
                 />
               </div>
 
@@ -284,6 +210,18 @@ const MaintenanceForm: React.FC<MaintenanceFormProps> = ({ onSubmit }) => {
                   onChange={handleChange} 
                   required 
                   placeholder="Select..."
+                />
+              </div>
+
+              <div className="form-group md:col-span-2">
+                <label className={labelClass}>Asset Numbers (e.g. Signal Nos, Point Nos)</label>
+                <input 
+                    type="text" 
+                    name="assetNumbers" 
+                    className={inputClass} 
+                    value={formData.assetNumbers} 
+                    onChange={handleChange} 
+                    placeholder="e.g. S-22, Pt-101" 
                 />
               </div>
 
