@@ -73,15 +73,53 @@ const MaintenanceForm: React.FC<MaintenanceFormProps> = ({ onSubmit }) => {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Helper to get CSRF token
+  const getCookie = (name: string) => {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === name + '=') {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    
-    // Simulate network delay
-    setTimeout(() => {
-        onSubmit(formData);
+
+    try {
+      const csrftoken = getCookie('csrftoken');
+      const response = await fetch('/api/forms/maintenance-reports/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken || '',
+        },
+        credentials: 'include',
+        body: JSON.stringify(formData),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.warn('⚠️ API Submission failed:', errText);
+        alert(`Failed to save to server (HTTP ${response.status}). This report is NOT shared across devices.\n\n${errText}`);
         setIsSubmitting(false);
-    }, 1000);
+        return;
+      }
+
+      onSubmit(formData);
+    } catch (error) {
+      console.error('❌ Network error while submitting to API:', error);
+      alert('Network error while saving to server. This report is NOT shared across devices.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

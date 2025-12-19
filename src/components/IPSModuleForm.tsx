@@ -230,21 +230,24 @@ const IPSModuleForm: React.FC<IPSFormProps> = ({ onSubmit }) => {
         body: JSON.stringify(apiPayload),
       });
 
-      if (response.ok) {
-        console.log("✅ Report successfully saved to Database via API.");
-      } else {
+      if (!response.ok) {
         const errText = await response.text();
-        console.warn(`⚠️ API Submission failed (${response.status}). Falling back to local state.`, errText);
+        console.warn(`⚠️ API Submission failed (${response.status}).`, errText);
+        alert(`Failed to save to server (HTTP ${response.status}). This report is NOT shared across devices.\n\n${errText}`);
+        setIsSubmitting(false);
+        return;
       }
+
+      console.log("✅ Report successfully saved to Database via API.");
     } catch (error) {
       console.error("❌ Network error while submitting to API:", error);
+      alert('Network error while saving to server. This report is NOT shared across devices.');
+      setIsSubmitting(false);
+      return;
     }
 
-    // 4. Always update local UI (Optimistic update or offline fallback)
-    setTimeout(() => {
-        onSubmit(reportDataForApp);
-        setIsSubmitting(false);
-    }, 500);
+    onSubmit(reportDataForApp);
+    setIsSubmitting(false);
   };
 
   return (

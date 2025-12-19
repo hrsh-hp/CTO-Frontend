@@ -162,6 +162,8 @@ export interface IPSModuleEntry {
 export interface IPSReport {
   id: string;
   type: 'ips';
+  // Reporter (auto-filled by backend as "CSI-<Station>"; optional for older/local data)
+  name?: string;
   // Week Details
   submissionDate: string; // Must be Monday
   weekFrom: string;

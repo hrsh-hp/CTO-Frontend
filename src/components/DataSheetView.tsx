@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Table, Search } from 'lucide-react';
 import type { FailureReport, RelayRoomLog, MaintenanceReport, IPSReport, ACFailureReport, DisconnectionReport, MovementReport, JPCReport } from '../types';
@@ -8,10 +8,17 @@ import { IPS_COMPANIES, IPS_MODULES } from '../constants';
 interface DataSheetViewProps {
   data: (FailureReport | RelayRoomLog | MaintenanceReport | IPSReport | ACFailureReport | DisconnectionReport | MovementReport | JPCReport)[];
   type: 'failure' | 'relay' | 'maintenance' | 'ips' | 'ac' | 'disconnection' | 'movement' | 'jpc';
+    onLoad?: () => void;
 }
 
-const DataSheetView: React.FC<DataSheetViewProps> = ({ data, type }) => {
+const DataSheetView: React.FC<DataSheetViewProps> = ({ data, type, onLoad }) => {
   const [searchTerm, setSearchTerm] = useState('');
+
+    useEffect(() => {
+        onLoad?.();
+        // Intentionally run once on mount (opening the page).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
   const filteredData = useMemo(() => {
     if (!searchTerm) return data;

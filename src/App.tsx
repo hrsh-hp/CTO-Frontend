@@ -17,7 +17,7 @@ import SectionalOfficers from './components/SectionalOfficers';
 import PolicyLetters from './components/PolicyLetters';
 import DataSheetView from './components/DataSheetView';
 import type { FailureReport, RelayRoomLog, MaintenanceReport, IPSReport, ACFailureReport, DisconnectionReport, MovementReport, JPCReport } from './types';
-import { MOCK_FAILURES, MOCK_RELAY_LOGS, MOCK_MAINTENANCE_LOGS, MOCK_IPS_REPORTS, MOCK_AC_REPORTS } from './constants';
+import { MOCK_RELAY_LOGS, MOCK_AC_REPORTS } from './constants';
 import { CheckCircle, AlertOctagon, Copy } from 'lucide-react';
 import { MasterDataProvider } from './contexts/MasterDataContext';
 
@@ -39,16 +39,22 @@ const getCookie = (name: string) => {
 
 const MainLayout = () => {
   // --- State for Reports ---
-  const [failures, setFailures] = useState<FailureReport[]>([]);
+  const [failures, setFailures] = useState<FailureReport[]>(() => {
+    const saved = localStorage.getItem('firewatch_failures');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [relayLogs, setRelayLogs] = useState<RelayRoomLog[]>(() => {
     const saved = localStorage.getItem('firewatch_relay_logs');
     return saved ? JSON.parse(saved) : MOCK_RELAY_LOGS;
   });
   const [maintenanceLogs, setMaintenanceLogs] = useState<MaintenanceReport[]>(() => {
     const saved = localStorage.getItem('firewatch_maintenance_logs');
-    return saved ? JSON.parse(saved) : MOCK_MAINTENANCE_LOGS;
+    return saved ? JSON.parse(saved) : [];
   });
-  const [ipsReports, setIpsReports] = useState<IPSReport[]>([]);
+  const [ipsReports, setIpsReports] = useState<IPSReport[]>(() => {
+    const saved = localStorage.getItem('firewatch_ips_reports');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [acReports, setACReports] = useState<ACFailureReport[]>(() => {
       const saved = localStorage.getItem('firewatch_ac_reports');
       return saved ? JSON.parse(saved) : MOCK_AC_REPORTS;
@@ -60,90 +66,172 @@ const MainLayout = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // --- Persistence ---
+  useEffect(() => { localStorage.setItem('firewatch_failures', JSON.stringify(failures)); }, [failures]);
   useEffect(() => { localStorage.setItem('firewatch_relay_logs', JSON.stringify(relayLogs)); }, [relayLogs]);
   useEffect(() => { localStorage.setItem('firewatch_maintenance_logs', JSON.stringify(maintenanceLogs)); }, [maintenanceLogs]);
+  useEffect(() => { localStorage.setItem('firewatch_ips_reports', JSON.stringify(ipsReports)); }, [ipsReports]);
   useEffect(() => { localStorage.setItem('firewatch_ac_reports', JSON.stringify(acReports)); }, [acReports]);
 
-  // --- API Fetching ---
-  useEffect(() => {
-    // 1. Failures
-    const fetchFailures = async () => {
-      try {
-        const response = await fetch('/api/forms/failure-reports/');
-        if (response.ok) {
-          const apiData = await response.json();
-          setFailures(apiData.map((r: any) => ({
-            id: r.id.toString(), type: 'failure', name: r.name, date: r.date, sectionalOfficer: r.sectional_officer, csi: r.csi, designation: r.designation, postingStationCode: r.posting_station_code, toLocation: r.to_location, route: r.route, make: r.make, failureDateTime: r.failure_date_time, reason: Array.isArray(r.reason) ? r.reason : [], remarks: r.remarks, amc: r.amc, warranty: r.warranty, status: r.status || 'Open', submittedAt: r.submitted_at
-          })));
-        } else {
-          const saved = localStorage.getItem('firewatch_failures');
-          setFailures(saved ? JSON.parse(saved) : MOCK_FAILURES);
-        }
-      } catch (error) {
-        const saved = localStorage.getItem('firewatch_failures');
-        setFailures(saved ? JSON.parse(saved) : MOCK_FAILURES);
-      }
-    };
-    
-    // 2. IPS
-    const fetchIPSReports = async () => {
-      try {
-        const response = await fetch('/api/forms/ips-reports/');
-        if (response.ok) {
-          const apiData = await response.json();
-          setIpsReports(apiData.map((r: any) => ({
-            id: r.id.toString(), type: 'ips', submissionDate: r.submission_date, weekFrom: r.week_from, weekTo: r.week_to, csi: r.csi, remarks: r.remarks, submittedAt: r.submitted_at, entries: r.entries.map((e: any) => ({ id: e.id.toString(), moduleType: e.module_type, company: e.company, qtyDefective: e.qty_defective, qtySpare: e.qty_spare, qtySpareAMC: e.qty_spare_amc, qtyDefectiveAMC: e.qty_defective_amc }))
-          })));
-        } else {
-          const saved = localStorage.getItem('firewatch_ips_reports');
-          if (saved) setIpsReports(JSON.parse(saved));
-          else setIpsReports(MOCK_IPS_REPORTS);
-        }
-      } catch (error) {
-        const saved = localStorage.getItem('firewatch_ips_reports');
-        if (saved) setIpsReports(JSON.parse(saved));
-        else setIpsReports(MOCK_IPS_REPORTS);
-      }
-    };
+  // --- Lazy API Refreshers (call when user opens a page/tab) ---
+  const refreshFailures = async () => {
+    try {
+      const response = await fetch('/api/forms/failure-reports/');
+      if (!response.ok) return;
+      const apiData = await response.json();
+      setFailures(apiData.map((r: any) => ({
+        id: r.id.toString(),
+        type: 'failure',
+        name: r.name,
+        date: r.date,
+        sectionalOfficer: r.sectional_officer,
+        csi: r.csi,
+        designation: r.designation,
+        postingStationCode: r.posting_station_code,
+        toLocation: r.to_location,
+        route: r.route,
+        make: r.make,
+        failureDateTime: r.failure_date_time,
+        reason: Array.isArray(r.reason) ? r.reason : [],
+        remarks: r.remarks,
+        amc: r.amc,
+        warranty: r.warranty,
+        status: r.status || 'Open',
+        submittedAt: r.submitted_at,
+      })));
+    } catch (error) {
+      console.warn('Failed to refresh failures', error);
+    }
+  };
 
-    // 3. Movements
-    const fetchMovements = async () => {
-        try {
-            const response = await fetch('/api/forms/movement-reports/');
-            if (response.ok) {
-                const apiData = await response.json();
-                setMovementReports(apiData.map((r: any) => ({
-                    id: r.id.toString(), type: 'movement', date: r.date, name: r.name, designation: r.designation, sectionalOfficer: r.sectional_officer, csi: r.csi, moveFrom: r.move_from, moveTo: r.move_to, workDone: r.work_done, submittedAt: r.submitted_at
-                })));
-            }
-        } catch (error) { console.warn("Failed to fetch movements", error); }
-    };
+  const refreshIPSReports = async () => {
+    try {
+      const response = await fetch('/api/forms/ips-reports/');
+      if (!response.ok) return;
+      const apiData = await response.json();
+      setIpsReports(apiData.map((r: any) => ({
+        id: r.id.toString(),
+        type: 'ips',
+        name: r.name ?? r.reporter_name,
+        submissionDate: r.submission_date,
+        weekFrom: r.week_from,
+        weekTo: r.week_to,
+        csi: r.csi,
+        remarks: r.remarks,
+        submittedAt: r.submitted_at ?? r.created_at ?? new Date().toISOString(),
+        entries: r.entries.map((e: any) => ({
+          id: e.id.toString(),
+          moduleType: e.module_type,
+          company: e.company,
+          qtyDefective: e.qty_defective,
+          qtySpare: e.qty_spare,
+          qtySpareAMC: e.qty_spare_amc,
+          qtyDefectiveAMC: e.qty_defective_amc,
+        }))
+      })));
+    } catch (error) {
+      console.warn('Failed to refresh IPS reports', error);
+    }
+  };
 
-    // 4. JPC
-    const fetchJPC = async () => {
-        try {
-            const response = await fetch('/api/forms/jpc-reports/');
-            if (response.ok) {
-                const apiData = await response.json();
-                setJpcReports(apiData.map((r: any) => ({
-                    id: r.id.toString(), type: 'jpc', station: r.station, totalPoints: r.total_points, inspectedToday: r.inspected_today, jpcDate: r.jpc_date, totalInspectedCum: r.total_inspected_cum, pendingPoints: r.pending_points, inspectionBy: r.inspection_by, inspectorName: r.inspector_name, submittedAt: r.submitted_at
-                })));
-            }
-        } catch (error) { console.warn("Failed to fetch JPC reports", error); }
-    };
+  const refreshMaintenanceReports = async () => {
+    try {
+      const response = await fetch('/api/forms/maintenance-reports/');
+      if (!response.ok) return;
+      const apiData = await response.json();
+      setMaintenanceLogs(apiData.map((r: any) => ({
+        id: r.id.toString(),
+        type: 'maintenance',
+        name: r.name,
+        designation: r.designation,
+        stationPosted: r.stationPosted,
+        date: r.date,
+        sectionalOfficer: r.sectionalOfficer,
+        csi: r.csi,
+        maintenanceType: r.maintenanceType,
+        assetNumbers: r.assetNumbers ?? '',
+        section: r.section,
+        workDescription: r.workDescription ?? '',
+        remarks: r.remarks ?? '',
+        submittedAt: r.submittedAt ?? new Date().toISOString(),
+      })));
+    } catch (error) {
+      console.warn('Failed to refresh maintenance reports', error);
+    }
+  };
 
-    // 5. Disconnection (Needs Fetching or Mock)
-    const fetchDisconnections = async () => {
-        // Placeholder for API fetch similar to above
-        // setDisconnectionReports(...)
-    };
-    fetchDisconnections();
+  const refreshACReports = async () => {
+    try {
+      const response = await fetch('/api/forms/ac-reports/');
+      if (!response.ok) return;
+      const apiData = await response.json();
+      setACReports(apiData.map((r: any) => ({
+        id: r.id.toString(),
+        type: 'ac',
+        name: r.reporter_name,
+        designation: r.reporter_designation,
+        sectionalOfficer: r.sectional_officer,
+        csi: r.csi,
+        date: r.failure_date_time ? String(r.failure_date_time).split('T')[0] : (r.created_at ? String(r.created_at).split('T')[0] : ''),
+        locationCode: r.location_code,
+        totalACUnits: r.total_ac_units,
+        acType: r.ac_type,
+        totalFailCount: r.total_fail_count,
+        failureDateTime: r.failure_date_time,
+        underWarranty: r.under_warranty,
+        underAMC: r.under_amc,
+        remarks: r.remarks ?? '',
+        submittedAt: r.created_at,
+      })));
+    } catch (error) {
+      console.warn('Failed to refresh AC reports', error);
+    }
+  };
 
-    fetchFailures();
-    fetchIPSReports();
-    fetchMovements();
-    fetchJPC();
-  }, []);
+  const refreshMovements = async () => {
+    try {
+      const response = await fetch('/api/forms/movement-reports/');
+      if (!response.ok) return;
+      const apiData = await response.json();
+      setMovementReports(apiData.map((r: any) => ({
+        id: r.id.toString(),
+        type: 'movement',
+        date: r.date,
+        name: r.name,
+        designation: r.designation,
+        sectionalOfficer: r.sectional_officer,
+        csi: r.csi,
+        moveFrom: r.move_from,
+        moveTo: r.move_to,
+        workDone: r.work_done,
+        submittedAt: r.submitted_at,
+      })));
+    } catch (error) {
+      console.warn('Failed to refresh movements', error);
+    }
+  };
+
+  const refreshJPC = async () => {
+    try {
+      const response = await fetch('/api/forms/jpc-reports/');
+      if (!response.ok) return;
+      const apiData = await response.json();
+      setJpcReports(apiData.map((r: any) => ({
+        id: r.id.toString(),
+        type: 'jpc',
+        station: r.station,
+        totalPoints: r.total_points,
+        inspectedToday: r.inspected_today,
+        jpcDate: r.jpc_date,
+        totalInspectedCum: r.total_inspected_cum,
+        pendingPoints: r.pending_points,
+        inspectionBy: r.inspection_by,
+        inspectorName: r.inspector_name,
+        submittedAt: r.submitted_at,
+      })));
+    } catch (error) {
+      console.warn('Failed to refresh JPC reports', error);
+    }
+  };
 
   const navigate = useNavigate();
   
@@ -170,7 +258,7 @@ const MainLayout = () => {
   };
 
   const handleIPSSubmit = (data: Omit<IPSReport, 'id' | 'submittedAt' | 'type'>) => {
-    const newReport: IPSReport = { ...data, id: 'temp-' + Math.random().toString(36).substr(2, 9), type: 'ips', submittedAt: new Date().toISOString() };
+    const newReport: IPSReport = { ...data, name: data.name ?? `CSI-${data.csi}`, id: 'temp-' + Math.random().toString(36).substr(2, 9), type: 'ips', submittedAt: new Date().toISOString() };
     setIpsReports(prev => [newReport, ...prev]);
     triggerSuccess({ title: "Report Submitted", message: "Weekly IPS module position has been successfully recorded." });
   };
@@ -264,14 +352,14 @@ const MainLayout = () => {
           <Route path="/report-movement" element={<MovementForm onSubmit={handleMovementSubmit} />} />
           <Route path="/report-jpc" element={<JPCForm onSubmit={handleJPCSubmit} />} />
           
-          <Route path="/view-data/failure" element={<DataSheetView data={failures} type="failure" />} />
+          <Route path="/view-data/failure" element={<DataSheetView data={failures} type="failure" onLoad={refreshFailures} />} />
           <Route path="/view-data/relay" element={<DataSheetView data={relayLogs} type="relay" />} />
-          <Route path="/view-data/maintenance" element={<DataSheetView data={maintenanceLogs} type="maintenance" />} />
-          <Route path="/view-data/ips" element={<DataSheetView data={ipsReports} type="ips" />} />
-          <Route path="/view-data/ac" element={<DataSheetView data={acReports} type="ac" />} />
+          <Route path="/view-data/maintenance" element={<DataSheetView data={maintenanceLogs} type="maintenance" onLoad={refreshMaintenanceReports} />} />
+          <Route path="/view-data/ips" element={<DataSheetView data={ipsReports} type="ips" onLoad={refreshIPSReports} />} />
+          <Route path="/view-data/ac" element={<DataSheetView data={acReports} type="ac" onLoad={refreshACReports} />} />
           <Route path="/view-data/disconnection" element={<DataSheetView data={disconnectionReports} type="disconnection" />} />
-          <Route path="/view-data/movement" element={<DataSheetView data={movementReports} type="movement" />} />
-          <Route path="/view-data/jpc" element={<DataSheetView data={jpcReports} type="jpc" />} />
+          <Route path="/view-data/movement" element={<DataSheetView data={movementReports} type="movement" onLoad={refreshMovements} />} />
+          <Route path="/view-data/jpc" element={<DataSheetView data={jpcReports} type="jpc" onLoad={refreshJPC} />} />
 
           <Route path="/admin" element={
             isAuthenticated ? (
@@ -284,6 +372,12 @@ const MainLayout = () => {
                   disconnectionReports={disconnectionReports}
                   movementReports={movementReports}
                   jpcReports={jpcReports}
+                  onRefreshFailures={refreshFailures}
+                  onRefreshMaintenance={refreshMaintenanceReports}
+                  onRefreshIPS={refreshIPSReports}
+                  onRefreshAC={refreshACReports}
+                  onRefreshMovement={refreshMovements}
+                  onRefreshJPC={refreshJPC}
               />
             ) : (
               <Login onLogin={() => setIsAuthenticated(true)} />

@@ -184,30 +184,33 @@ const ReportForm: React.FC<ReportFormProps> = ({ onSubmit }) => {
     };
     
     try {
-        const csrftoken = getCookie('csrftoken');
-        const response = await fetch('/api/forms/failure-reports/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrftoken || '',
-            },
-            credentials: 'include',
-            body: JSON.stringify(apiPayload)
-        });
+      const csrftoken = getCookie('csrftoken');
+      const response = await fetch('/api/forms/failure-reports/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken || '',
+        },
+        credentials: 'include',
+        body: JSON.stringify(apiPayload),
+      });
 
-        if (response.ok) {
-            console.log("✅ Failure Report saved to DB.");
-        } else {
-            console.warn("⚠️ API Error:", await response.text());
-        }
-    } catch (err) {
-        console.error("❌ Network Error:", err);
-    }
-
-    setTimeout(() => {
-        onSubmit(appPayload);
+      if (!response.ok) {
+        const errText = await response.text();
+        console.warn("⚠️ API Error:", errText);
+        alert(`Failed to save to server (HTTP ${response.status}). This report is NOT shared across devices.\n\n${errText}`);
         setIsSubmitting(false);
-    }, 500);
+        return;
+      }
+
+      console.log('✅ Failure Report saved to DB.');
+      onSubmit(appPayload);
+    } catch (err) {
+      console.error('❌ Network Error:', err);
+      alert('Network error while saving to server. This report is NOT shared across devices.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

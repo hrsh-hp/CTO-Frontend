@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { INITIAL_FILTERS } from '../types';
 import type { FailureReport, RelayRoomLog, MaintenanceReport, IPSReport, ACFailureReport, DisconnectionReport, MovementReport, JPCReport, FilterState } from '../types';
 import { 
@@ -20,11 +20,32 @@ interface DashboardProps {
   disconnectionReports?: DisconnectionReport[];
   movementReports?: MovementReport[];
   jpcReports?: JPCReport[];
+    onRefreshFailures?: () => void;
+    onRefreshMaintenance?: () => void;
+    onRefreshIPS?: () => void;
+    onRefreshAC?: () => void;
+    onRefreshMovement?: () => void;
+    onRefreshJPC?: () => void;
 }
 
 const inputFilterClass = "w-full px-3 py-2 bg-white border border-slate-300 rounded focus:border-[#005d8f] focus:ring-1 focus:ring-[#005d8f] outline-none text-sm text-slate-700 transition-all";
 
-const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceLogs, ipsReports = [], acReports = [], disconnectionReports = [], movementReports = [], jpcReports = [] }) => {
+const Dashboard: React.FC<DashboardProps> = ({
+    failures,
+    relayLogs,
+    maintenanceLogs,
+    ipsReports = [],
+    acReports = [],
+    disconnectionReports = [],
+    movementReports = [],
+    jpcReports = [],
+    onRefreshFailures,
+    onRefreshMaintenance,
+    onRefreshIPS,
+    onRefreshAC,
+    onRefreshMovement,
+    onRefreshJPC,
+}) => {
   const { 
     flatOfficers, flatCSIs, flatStations,
     makes, reasons, ipsModules, ipsCompanies 
@@ -34,6 +55,33 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
   const [filters, setFilters] = useState<FilterState>(INITIAL_FILTERS);
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+
+    useEffect(() => {
+        switch (activeTab) {
+            case 'failures':
+                onRefreshFailures?.();
+                break;
+            case 'maintenance':
+                onRefreshMaintenance?.();
+                break;
+            case 'ips':
+                onRefreshIPS?.();
+                break;
+            case 'ac':
+                onRefreshAC?.();
+                break;
+            case 'movement':
+                onRefreshMovement?.();
+                break;
+            case 'jpc':
+                onRefreshJPC?.();
+                break;
+            default:
+                break;
+        }
+        // Intentionally refresh only on tab change.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab]);
 
   // --- Helper: Calculate Duration ---
   const calculateDuration = (start: string, end: string) => {
@@ -1085,7 +1133,7 @@ const Dashboard: React.FC<DashboardProps> = ({ failures, relayLogs, maintenanceL
                                                     <td className="bg-slate-50 font-bold text-red-700 border-r border-slate-300">{rowTotal.n}</td>
 
                                                     {idx === 0 && (
-                                                        <td rowSpan={report.entries.length} className="border-l border-slate-300 bg-white font-medium text-slate-600 align-middle">{report.name}</td>
+                                                        <td rowSpan={report.entries.length} className="border-l border-slate-300 bg-white font-medium text-slate-600 align-middle">{report.sectionalOfficer || '-'}</td>
                                                     )}
                                                 </tr>
                                             );
